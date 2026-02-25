@@ -1,0 +1,10 @@
+{
+  "permission": {
+    "read": {
+      "/Users/ahad/Documents/Repos/FilmFX/.opencode/get-shit-done/*": "allow"
+    },
+    "external_directory": {
+      "/Users/ahad/Documents/Repos/FilmFX/.opencode/get-shit-done/*": "allow"
+    }
+  }
+}
