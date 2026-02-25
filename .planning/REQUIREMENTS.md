@@ -8,7 +8,7 @@
 
 ### Rendering Pipeline
 
-- [ ] **PIPE-01**: App converts sRGB input to linear color space before GPU processing and applies gamma correction on output
+- [x] **PIPE-01**: App converts sRGB input to linear color space before GPU processing and applies gamma correction on output
 - [ ] **PIPE-02**: Effects process in correct order: linearize → tone map → split tone → halation → bloom → grain → vignette → gamma
 - [ ] **PIPE-03**: Real-time preview renders at 30fps minimum (60fps target) on mid-range devices using downsampled resolution (1080p max)
 - [ ] **PIPE-04**: All custom shaders use `precision highp float` and work correctly on Adreno, Mali, and PowerVR GPUs
@@ -25,13 +25,13 @@
 
 ### Image I/O
 
-- [ ] **IO-01**: User can import photos from device gallery via system photo picker
+- [x] **IO-01**: User can import photos from device gallery via system photo picker
 - [ ] **IO-02**: User can export edited photo at full original resolution as JPEG to device gallery
 - [ ] **IO-03**: Exported images preserve EXIF metadata (orientation, date, camera info)
 
 ### UI/UX
 
-- [ ] **UI-01**: Dark, minimal UI design that is photo-centric with controls accessible from bottom of screen
+- [x] **UI-01**: Dark, minimal UI design that is photo-centric with controls accessible from bottom of screen
 - [ ] **UI-02**: Slider controls for all effect parameters (grain intensity, halation radius/intensity, bloom threshold/intensity, vignette intensity/smoothness, tone mapping strength, film compression amount)
 - [ ] **UI-03**: Color wheel controls for split toning (separate wheels for highlight and shadow colors)
 - [ ] **UI-04**: Before/after comparison via tap-hold toggle or split view showing original vs edited
@@ -68,7 +68,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PIPE-01 | Phase 1 | pending |
+| PIPE-01 | Phase 1 | Complete |
 | PIPE-02 | Phase 1 | pending |
 | PIPE-03 | Phase 1 | pending |
 | PIPE-04 | Phase 1 | pending |
@@ -79,10 +79,10 @@
 | FX-05 | Phase 2 | pending |
 | FX-06 | Phase 2 | pending |
 | FX-07 | Phase 4 | pending |
-| IO-01 | Phase 1 | pending |
+| IO-01 | Phase 1 | Complete |
 | IO-02 | Phase 7 | pending |
 | IO-03 | Phase 7 | pending |
-| UI-01 | Phase 1 | pending |
+| UI-01 | Phase 1 | Complete |
 | UI-02 | Phase 6 | pending |
 | UI-03 | Phase 3 | pending |
 | UI-04 | Phase 6 | pending |
