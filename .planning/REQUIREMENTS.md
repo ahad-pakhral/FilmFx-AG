@@ -9,9 +9,9 @@
 ### Rendering Pipeline
 
 - [x] **PIPE-01**: App converts sRGB input to linear color space before GPU processing and applies gamma correction on output
-- [ ] **PIPE-02**: Effects process in correct order: linearize → tone map → split tone → halation → bloom → grain → vignette → gamma
-- [ ] **PIPE-03**: Real-time preview renders at 30fps minimum (60fps target) on mid-range devices using downsampled resolution (1080p max)
-- [ ] **PIPE-04**: All custom shaders use `precision highp float` and work correctly on Adreno, Mali, and PowerVR GPUs
+- [x] **PIPE-02**: Effects process in correct order: linearize → tone map → split tone → halation → bloom → grain → vignette → gamma
+- [x] **PIPE-03**: Real-time preview renders at 30fps minimum (60fps target) on mid-range devices using downsampled resolution (1080p max)
+- [x] **PIPE-04**: All custom shaders use `precision highp float` and work correctly on Adreno, Mali, and PowerVR GPUs
 
 ### Film Effects
 
@@ -69,9 +69,9 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PIPE-01 | Phase 1 | Complete |
-| PIPE-02 | Phase 1 | pending |
-| PIPE-03 | Phase 1 | pending |
-| PIPE-04 | Phase 1 | pending |
+| PIPE-02 | Phase 1 | Complete |
+| PIPE-03 | Phase 1 | Complete |
+| PIPE-04 | Phase 1 | Complete |
 | FX-01 | Phase 5 | pending |
 | FX-02 | Phase 4 | pending |
 | FX-03 | Phase 4 | pending |
