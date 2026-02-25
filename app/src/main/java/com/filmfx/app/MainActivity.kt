@@ -35,15 +35,9 @@ class MainActivity : ComponentActivity() {
             // We transition to EditorActivity or similar (to be implemented)
             setTheme(R.style.Theme_FilmFX)
             
-            // For now just exit the splash visual by setting content
-            setContent()
+            androidx.activity.compose.setContent {
+                com.filmfx.app.ui.EditorScreen()
+            }
         }
-    }
-
-    private fun setContent() {
-        // Will be replaced by Compose UI in future plans
-        setContentView(android.view.View(this).apply {
-            setBackgroundColor(android.graphics.Color.DKGRAY)
-        })
     }
 }
