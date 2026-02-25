@@ -12,8 +12,8 @@ FilmFX goes from an empty Android project to a Play Store-ready physics-based fi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: GPU Pipeline Foundation** - App scaffold, gallery import, linear color space pipeline, real-time preview rendering
-- [ ] **Phase 2: Tone Mapping and Film Compression** - ACES filmic tone curve and highlight shoulder modeling
+- [x] **Phase 1: GPU Pipeline Foundation** - App scaffold, gallery import, linear color space pipeline, real-time preview rendering
+- [x] **Phase 2: Tone Mapping and Film Compression** - ACES filmic tone curve and highlight shoulder modeling
 - [ ] **Phase 3: Split Toning** - Color grading with separate highlight/shadow color wheels
 - [ ] **Phase 4: Spatial Effects** - Halation, bloom, and vignette via multi-pass GPU shaders
 - [ ] **Phase 5: Signal-Dependent Film Grain** - Physics-based grain with luminance-dependent density (core differentiator)
@@ -145,8 +145,8 @@ Note: Phases 3, 4, and 5 can execute in parallel after Phase 2 (3 and 4 depend o
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. GPU Pipeline Foundation | 0/3 | Not started | - |
-| 2. Tone Mapping and Film Compression | 0/1 | Not started | - |
+| 1. GPU Pipeline Foundation | 3/3 | Complete | 2026-02-25 |
+| 2. Tone Mapping and Film Compression | 2/2 | Complete | 2026-02-25 |
 | 3. Split Toning | 0/1 | Not started | - |
 | 4. Spatial Effects | 0/2 | Not started | - |
 | 5. Signal-Dependent Film Grain | 0/1 | Not started | - |
