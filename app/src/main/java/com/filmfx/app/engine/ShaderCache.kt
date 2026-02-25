@@ -26,7 +26,7 @@ class ShaderCache {
 
     private fun <T : GPUImageFilter> precompile(clazz: Class<T>, factory: () -> T) {
         val filter = factory()
-        filter.init() // This is safe because EngineContext is already current on this thread
+        filter.ifNeedInit() // This is safe because EngineContext is already current on this thread
         precompiledFilters[clazz] = filter
     }
 

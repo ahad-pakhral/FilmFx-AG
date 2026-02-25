@@ -4,7 +4,9 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.activity.compose.setContent
 import com.filmfx.app.engine.EngineContext
+import com.filmfx.app.engine.ShaderCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,7 +37,7 @@ class MainActivity : ComponentActivity() {
             // We transition to EditorActivity or similar (to be implemented)
             setTheme(R.style.Theme_FilmFX)
             
-            androidx.activity.compose.setContent {
+            setContent {
                 com.filmfx.app.ui.EditorScreen()
             }
         }

@@ -16,8 +16,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.filmfx.app.engine.filters.LinearizeFilter
+import com.filmfx.app.engine.filters.ToneMapFilter
 import com.filmfx.app.utils.ImageUtils
 import jp.co.cyberagent.android.gpuimage.GPUImageView
+import jp.co.cyberagent.android.gpuimage.filter.GPUImageFilterGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +32,18 @@ fun EditorScreen() {
     
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var loadedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var hasImage by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
+    // Phase 02: Cinematic Parameters
+    var exposure by remember { mutableStateOf(0.0f) }      // -2 to +2
+    var contrast by remember { mutableStateOf(1.0f) }      // 0.5 to 2.0
+    var shoulder by remember { mutableStateOf(0.0f) }      // 0 to 1
+    var toe by remember { mutableStateOf(0.0f) }           // 0 to 1
+
+    val linearizeFilter = remember { LinearizeFilter() }
+    val toneMapFilter = remember { ToneMapFilter() }
+    val filterChain = remember { GPUImageFilterGroup(listOf(linearizeFilter, toneMapFilter)) }
     
     var gpuImageView: GPUImageView? = null
 
@@ -52,6 +66,7 @@ fun EditorScreen() {
                     }
                     if (bmp != null) {
                         loadedBitmap = bmp
+                        hasImage = true
                         errorMessage = null
                     } else {
                         errorMessage = "Failed to load image."
@@ -98,7 +113,7 @@ fun EditorScreen() {
                     .fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
-                if (loadedBitmap == null && errorMessage == null) {
+                if (!hasImage && errorMessage == null) {
                     Text(
                         text = "No photo selected",
                         color = Color.Gray,
@@ -124,43 +139,91 @@ fun EditorScreen() {
                         modifier = Modifier.fillMaxSize(),
                         factory = { ctx ->
                             GPUImageView(ctx).apply {
-                                setScaleType(GPUImageView.ScaleType.CENTER_INSIDE)
                                 gpuImageView = this
+                                this.filter = filterChain
                             }
                         },
                         update = { view ->
+                            // Explicitly read these states to ensure Compose triggers 'update' when they change
+                            val currentExp = exposure
+                            val currentCon = contrast
+                            val currentShld = shoulder
+                            val currentToe = toe
+                            
+                            // Apply to filters (redundant with LaunchedEffect but ensures order and reactivity)
+                            toneMapFilter.exposure = currentExp
+                            toneMapFilter.contrast = currentCon
+                            toneMapFilter.shoulder = currentShld
+                            toneMapFilter.toe = currentToe
+                            
                             loadedBitmap?.let { bmp ->
                                 try {
-                                    // Task 2: Upload to GPU and recycle
                                     view.setImage(bmp)
-                                    // GPUImage handles texture filtering (bilinear by default)
-                                    // and we can clear our CPU reference to let the GC clean it up
                                     loadedBitmap = null
                                 } catch (e: Exception) {
-                                    // Task 3: UI error boundary
                                     Toast.makeText(context, "Renderer crashed. Restarting surface.", Toast.LENGTH_LONG).show()
                                     errorMessage = "GPU Error: Unsupported or crashed."
+                                    hasImage = false
                                 }
                             }
+                            // Ask the view to redraw the existing texture with the new filter parameters
+                            view.requestRender()
                         }
                     )
                 }
             }
 
-            // Bottom Control Area Placeholder
+            // Bottom Control Area: Cinematic Sliders
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp),
+                    .height(180.dp),
                 color = Color(0xFF1A1A1A)
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "Effect Controls (Placeholder)",
-                        color = Color.Gray
-                    )
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    SliderRow(label = "Exposure", value = exposure, range = -2f..2f) { newValue : Float -> exposure = newValue }
+                    SliderRow(label = "Contrast", value = contrast, range = 0.5f..2.0f) { newValue : Float -> contrast = newValue }
+                    SliderRow(label = "Latitude", value = shoulder, range = -1f..1f) { newValue : Float -> shoulder = newValue }
+                    SliderRow(label = "Shadows", value = toe, range = -1f..1f) { newValue : Float -> toe = newValue }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValueChange: (Float) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = Color.Gray,
+            modifier = Modifier.width(80.dp),
+            style = MaterialTheme.typography.labelMedium
+        )
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = range,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Color.DarkGray
+            )
+        )
+        Text(
+            text = "%.2f".format(value),
+            color = Color.White,
+            modifier = Modifier.width(40.dp),
+            textAlign = TextAlign.End,
+            style = MaterialTheme.typography.labelSmall
+        )
     }
 }
