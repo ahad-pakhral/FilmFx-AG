@@ -23,9 +23,11 @@ class MainActivity : ComponentActivity() {
                 // Offscreen setup
                 engine.setupOffscreenFbo(1920, 1080)
                 
-                // TODO: Store engine globally or pass to next screen
-                // For now, delay slightly to simulate shader compilation
-                kotlinx.coroutines.delay(1000)
+                // Task 4: Precompile shaders while splash is up
+                val shaderCache = ShaderCache()
+                shaderCache.precompileAll()
+                
+                // TODO: Store engine and cache globally or pass to next screen
                 
                 // Once initialized, we can transition to the real UI
             }
