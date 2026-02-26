@@ -9,10 +9,10 @@ See: .planning/PROJECT.md (updated 2026-02-25)
 
 ## Current Position
 
-Phase: 5 of 8 (Film Grain)
-Plan: 1 of 1 in current phase
+Phase: 6 of 8 (Editor Controls and Interaction)
+Plan: 4 of 4 in current phase
 Status: Complete
-Last activity: 2026-02-26 -- Completed Phase 5: Signal-Dependent Film Grain & DETAIL Controls
+Last activity: 2026-02-26 -- Completed Phase 06 Plan 04: Editor Feature Completion (Undo/Redo, Before/After, Persistence)
 
 Progress: [██████████] 100%
 

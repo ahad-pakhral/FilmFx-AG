@@ -18,6 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Spatial Effects** - Halation, bloom, and vignette via multi-pass GPU shaders
 - [x] **Phase 5: Signal-Dependent Film Grain** - Physics-based grain with luminance-dependent density (core differentiator)
 - [ ] **Phase 6: Editor Controls and Interaction** - Slider controls, before/after comparison, non-destructive parameter editing
+- [ ] **Phase 6.1: Color, Effects & Presets (NEW)** - Temperature, Tint, Saturation, Richness/Subtractive Sat, Dehaze, Film Blur, and Preset management
 - [ ] **Phase 7: Full-Resolution Export** - Dual pipeline for full-res JPEG export with tile-based rendering and EXIF preservation
 - [ ] **Phase 8: Launch Readiness** - App icon, Play Store screenshots, and store listing
 
@@ -108,8 +109,23 @@ Plans:
 Plans:
 - [ ] 06-01: TBD
 - [ ] 06-02: TBD
+### Phase 6.1: Color, Effects & Presets (NEW)
+**Goal**: User can apply advanced film color corrections (Temp, Tint, Richness), atmospheric effects (Dehaze, Blur), and manage presets for their creative looks.
+**Depends on**: Phase 6
+**Requirements**: FX-08, FX-09, FX-10, IO-04
+**Success Criteria** (what must be TRUE):
+  1. User can adjust Temperature and Tint with visual gradient-track sliders.
+  2. User can apply "Subtractive Saturation" (colors darken as they saturate) and "Richness" (targeting shadow/midtone depth).
+  3. User can apply Dehaze and Film Blur effects without significant performance impact.
+  4. User can Save/Import/Export presets that capture all current editor settings.
+**Plans**: TBD
 
-### Phase 7: Full-Resolution Export
+Plans:
+- [ ] [06.1-01-PLAN.md](file:///Users/ahad/Documents/FilmFX-AG/.planning/phases/06.1-color-effects-presets/06.1-01-PLAN.md)
+- [ ] [06.1-02-PLAN.md](file:///Users/ahad/Documents/FilmFX-AG/.planning/phases/06.1-color-effects-presets/06.1-02-PLAN.md)
+- [ ] [06.1-03-PLAN.md](file:///Users/ahad/Documents/FilmFX-AG/.planning/phases/06.1-color-effects-presets/06.1-03-PLAN.md)
+- [ ] [06.1-04-PLAN.md](file:///Users/ahad/Documents/FilmFX-AG/.planning/phases/06.1-color-effects-presets/06.1-04-PLAN.md)
+
 **Goal**: User can save their edited photo at full original resolution to their device gallery, with metadata preserved, without crashes on large images
 **Depends on**: Phase 6
 **Requirements**: IO-02, IO-03
@@ -150,5 +166,6 @@ Note: Phases 3, 4, and 5 can execute in parallel after Phase 2 (3 and 4 depend o
 | 4. Spatial Effects | 2/2 | Complete | 2026-02-26 |
 | 5. Signal-Dependent Film Grain | 1/1 | Complete | 2026-02-26 |
 | 6. Editor Controls and Interaction | 0/2 | Not started | - |
+| 6.1 Color, Effects & Presets | 0/1 | Not started | - |
 | 7. Full-Resolution Export | 0/1 | Not started | - |
 | 8. Launch Readiness | 0/1 | Not started | - |
