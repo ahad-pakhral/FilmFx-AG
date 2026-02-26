@@ -5,14 +5,14 @@
 See: .planning/PROJECT.md (updated 2026-02-25)
 
 **Core value:** Signal-dependent film grain and physically accurate halation -- the two effects that make film look like film, and that no other mobile app implements correctly.
-**Current focus:** Phase 4: Spatial Effects (Halation, Bloom)
+**Current focus:** Phase 6: Editor Controls and Interaction
 
 ## Current Position
 
-Phase: 3 of 8 (Split Toning)
-Plan: 2 of 2 in current phase
+Phase: 5 of 8 (Film Grain)
+Plan: 1 of 1 in current phase
 Status: Complete
-Last activity: 2026-02-25 -- Completed Phase 3: Oklab Split Toning & Lightroom UI
+Last activity: 2026-02-26 -- Completed Phase 5: Signal-Dependent Film Grain & DETAIL Controls
 
 Progress: [██████████] 100%
 
