@@ -7,6 +7,9 @@ import android.opengl.EGLDisplay
 import android.opengl.EGLSurface
 import android.opengl.GLES30
 import android.util.Log
+import com.filmfx.app.data.EffectParameters
+import com.filmfx.app.engine.filters.*
+import jp.co.cyberagent.android.gpuimage.filter.GPUImageFilterGroup
 
 class EngineContext {
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
@@ -105,5 +108,90 @@ class EngineContext {
         eglDisplay = EGL14.EGL_NO_DISPLAY
         eglContext = EGL14.EGL_NO_CONTEXT
         eglSurface = EGL14.EGL_NO_SURFACE
+    }
+    
+    companion object {
+        fun buildFilterGroup(params: EffectParameters, viewWidth: Float = 0f, viewHeight: Float = 0f): GPUImageFilterGroup {
+            val linearizeFilter = LinearizeFilter()
+            val colorFilter = ColorFilter().apply {
+                temperature = params.colorTemperature
+                tint = params.colorTint
+                saturation = params.colorSaturation
+                richness = params.colorRichness
+                subtractiveSat = params.colorSubtractiveSat
+            }
+            val toneMapFilter = ToneMapFilter().apply {
+                exposure = params.toneMapExposure
+                contrast = params.toneMapContrast
+                shoulder = params.toneMapShoulder
+                toe = params.toneMapToe
+            }
+            val dehazeFilter = DehazeFilter().apply {
+                amount = params.dehazeAmount
+                neutralize = params.dehazeAtmosphereNeutralize
+            }
+            val splitToningFilter = SplitToningFilter().apply {
+                highlightHue = params.splitToneHighlightHue
+                highlightSat = params.splitToneHighlightSat
+                shadowHue = params.splitToneShadowHue
+                shadowSat = params.splitToneShadowSat
+                balance = params.splitToneBalance
+                impact = params.splitToneImpact
+            }
+            val glowFilter = GlowFilter().apply {
+                // Halation
+                halationIntensity = params.halationIntensity
+                halationThreshold = params.halationThreshold
+                halationSpread = params.halationSpread
+                halationHue = params.halationHue
+                halationSaturation = params.halationSaturation
+                showMaskOnly = params.halationShowMask
+                // Bloom
+                bloomIntensity = params.bloomIntensity
+                bloomThreshold = params.bloomThreshold
+                bloomSpread = params.bloomSpread
+                bloomOpacity = params.bloomOpacity
+                glowBlackPoint = params.bloomBlackPoint
+                glowHighlightProtection = params.bloomHighlightProtection
+                blendMode = if (params.bloomSoftLight) 1 else 0
+            }
+            val filmBlurFilter = FilmBlurFilter().apply {
+                amount = params.blurAmount
+                isTiltShift = params.blurIsTiltShift
+                focus = params.blurTiltShiftFocus
+                if (viewWidth > 0 && viewHeight > 0) aspectRatio = viewWidth / viewHeight
+            }
+            val grainFilter = GrainFilter().apply {
+                intensity = params.grainIntensity
+                size = params.grainSize
+                softness = params.grainSoftness
+                clumpiness = params.grainClumpiness
+                shadowCoverage = params.grainShadowCoverage
+                highlightFade = params.grainHighlightFade
+                colorNoiseToggle = params.grainColorNoise
+                chromaIntensity = params.grainChromaIntensity
+            }
+            val vignetteFilter = VignetteFilter().apply {
+                intensity = params.vignetteIntensity
+                radius = params.vignetteRadius
+                softness = params.vignetteFeather
+            }
+            val spatialTransformFilter = SpatialTransformFilter().apply {
+                if (viewWidth > 0 && viewHeight > 0) aspect = viewWidth / viewHeight
+            }
+
+            return GPUImageFilterGroup(listOf(
+                linearizeFilter,
+                colorFilter,
+                toneMapFilter,
+                dehazeFilter,
+                splitToningFilter,
+                glowFilter,
+                filmBlurFilter,
+                grainFilter,
+                vignetteFilter,
+                spatialTransformFilter
+            ))
+        }
     }
 }
