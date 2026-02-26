@@ -15,8 +15,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: GPU Pipeline Foundation** - App scaffold, gallery import, linear color space pipeline, real-time preview rendering
 - [x] **Phase 2: Tone Mapping and Film Compression** - ACES filmic tone curve and highlight shoulder modeling
 - [x] **Phase 3: Split Toning** - Color grading with separate highlight/shadow color wheels
-- [ ] **Phase 4: Spatial Effects** - Halation, bloom, and vignette via multi-pass GPU shaders
-- [ ] **Phase 5: Signal-Dependent Film Grain** - Physics-based grain with luminance-dependent density (core differentiator)
+- [x] **Phase 4: Spatial Effects** - Halation, bloom, and vignette via multi-pass GPU shaders
+- [x] **Phase 5: Signal-Dependent Film Grain** - Physics-based grain with luminance-dependent density (core differentiator)
 - [ ] **Phase 6: Editor Controls and Interaction** - Slider controls, before/after comparison, non-destructive parameter editing
 - [ ] **Phase 7: Full-Resolution Export** - Dual pipeline for full-res JPEG export with tile-based rendering and EXIF preservation
 - [ ] **Phase 8: Launch Readiness** - App icon, Play Store screenshots, and store listing
@@ -90,10 +90,9 @@ Plans:
   1. Grain is visibly denser in bright/highlight areas and sparser in shadows (signal-dependent behavior)
   2. Grain varies independently per RGB channel, producing subtle color variation rather than monochrome noise
   3. Grain appearance is organic and film-like rather than digital/uniform when compared to reference analog film images
-**Plans**: TBD
-
-Plans:
-- [ ] 05-01: TBD
+**Status**: Complete
+**Plans**: [05-01-PLAN.md](file:///Users/ahad/Documents/FilmFX-AG/.planning/phases/05-signal-dependent-film-grain/05-01-PLAN.md)
+**Summary**: [05-01-SUMMARY.md](file:///Users/ahad/Documents/FilmFX-AG/.planning/phases/05-signal-dependent-film-grain/05-01-SUMMARY.md)
 
 ### Phase 6: Editor Controls and Interaction
 **Goal**: User has full manual control over every film effect through sliders, can compare before/after, and can freely adjust any parameter without losing other edits
@@ -148,8 +147,8 @@ Note: Phases 3, 4, and 5 can execute in parallel after Phase 2 (3 and 4 depend o
 | 1. GPU Pipeline Foundation | 3/3 | Complete | 2026-02-25 |
 | 2. Tone Mapping and Film Compression | 2/2 | Complete | 2026-02-25 |
 | 3. Split Toning | 2/2 | Complete | 2026-02-25 |
-| 4. Spatial Effects | 0/2 | Not started | - |
-| 5. Signal-Dependent Film Grain | 0/1 | Not started | - |
+| 4. Spatial Effects | 2/2 | Complete | 2026-02-26 |
+| 5. Signal-Dependent Film Grain | 1/1 | Complete | 2026-02-26 |
 | 6. Editor Controls and Interaction | 0/2 | Not started | - |
 | 7. Full-Resolution Export | 0/1 | Not started | - |
 | 8. Launch Readiness | 0/1 | Not started | - |

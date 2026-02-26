@@ -35,7 +35,7 @@
 - [ ] **UI-02**: Slider controls for all effect parameters (grain intensity, halation radius/intensity, bloom threshold/intensity, vignette intensity/smoothness, tone mapping strength, film compression amount)
 - [ ] **UI-03**: Color wheel controls for split toning (separate wheels for highlight and shadow colors)
 - [ ] **UI-04**: Before/after comparison via tap-hold toggle or split view showing original vs edited
-- [ ] **UI-05**: Non-destructive parameter editing — user can adjust any parameter without restarting or losing other edits
+- [x] **UI-05**: Non-destructive parameter editing — user can adjust any parameter without restarting or losing other edits
 
 ### Launch
 
@@ -86,7 +86,7 @@
 | UI-02 | Phase 6 | pending |
 | UI-03 | Phase 3 | pending |
 | UI-04 | Phase 6 | pending |
-| UI-05 | Phase 6 | pending |
+| UI-05 | Phase 6 | Complete |
 | LAUNCH-01 | Phase 8 | pending |
 | LAUNCH-02 | Phase 8 | pending |
 | LAUNCH-03 | Phase 8 | pending |
