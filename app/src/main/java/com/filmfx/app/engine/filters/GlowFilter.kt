@@ -317,25 +317,25 @@ precision highp float;
         vec3 c2 = texture2D(inputImageTexture, textureCoordinate + vec2(0.0, texelHeight)).rgb;
         vec3 c3 = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth, texelHeight)).rgb;
         
-        // Sample center and a slightly offset neighbor for contrast check
+        // Phase 13: Highlight-Steered Edge-Lock
+        // 1. Highlight Mask: Threshold now correctly drives absolute brightness requirement.
+        // Sample in a 2x2 grid to catch sub-pixel highlights.
         vec3 center = max(max(c0, c1), max(c2, c3));
-        vec3 neighbor = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth * 2.0, texelHeight * 2.0)).rgb;
-        
         float lCenter = luma(center);
+        float highlightMask = smoothstep(threshold - 0.05, threshold + 0.15, lCenter);
+        
+        // 2. Edge-Lock Mask: Fixed-sensitivity contrast check.
+        // Only triggers if there is a sharp transition (bright pixel next to dark).
+        vec3 neighbor = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth * 2.0, texelHeight * 2.0)).rgb;
         float lNeighbor = luma(neighbor);
-        
-        // Edge-Lock ("Delta Extraction"):
-        // Triggers based on contrast (spatial difference) instead of absolute brightness.
-        // This anchors halation to boundaries like the cat's tail and prevents "Heat Map" expansion.
         float delta = abs(lCenter - lNeighbor);
-        float edgeTrigger = smoothstep(threshold - 0.1, threshold + 0.1, delta);
+        float edgeMask = smoothstep(0.1, 0.4, delta);
         
-        // Brightness Mask: Ensures halation only triggers on edges of relatively bright highlights.
-        float brightnessMask = smoothstep(0.3, 0.6, lCenter);
-        float finalMask = edgeTrigger * brightnessMask;
+        // Combine: Pixel must be bright AND on a contrast boundary.
+        float finalMask = highlightMask * edgeMask;
         
-        // Multiplier (3.0) gives the thin edge-lock enough energy for the pyramid blur.
-        gl_FragColor = vec4(finalMask * 3.0, finalMask * 0.4, finalMask * 0.05, 1.0);
+        // Lower multiplier (1.5) ensures the mask doesn't clip before the pyramid blur.
+        gl_FragColor = vec4(finalMask * 1.5, finalMask * 0.2, finalMask * 0.02, 1.0);
     }
     """.trimIndent()
 ) {
