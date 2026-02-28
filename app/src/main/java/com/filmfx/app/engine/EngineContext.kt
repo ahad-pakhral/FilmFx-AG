@@ -110,60 +110,205 @@ class EngineContext {
         eglSurface = EGL14.EGL_NO_SURFACE
     }
     
+    object Parity {
+        const val TINT_OFFSET = 0.0f
+        const val SAT_OFFSET = 0.0f
+        const val HALATION_THRESHOLD_OFFSET = 0.0f
+        const val SPREAD_SCALE = 1.0f
+        const val TOE_OFFSET = 0.0f 
+        
+        const val GLOW_INTENSITY_SCALE = 1.0f
+        const val GLOW_BASE_BOOST = 0.0f
+        
+        const val GRAIN_EXPORT_SCALE = 1.0f 
+        const val GRAIN_PREVIEW_SCALE = 1.0f
+        
+        const val GRAIN_SIZE_SCALE = 1.0f
+        const val VIGNETTE_RADIUS_BOOST = 0.0f
+        const val BLUR_SCALE = 1.0f
+    }
+
     companion object {
-        fun buildFilterGroup(params: EffectParameters, viewWidth: Float = 0f, viewHeight: Float = 0f): GPUImageFilterGroup {
-            val linearizeFilter = LinearizeFilter()
-            val colorFilter = ColorFilter().apply {
+        fun buildFilterGroup(
+            params: EffectParameters,
+            viewWidth: Float = 0f,
+            viewHeight: Float = 0f,
+            forceExportMode: Boolean = false
+        ): GPUImageFilterGroup {
+            val filters = createFilterList(params, viewWidth, viewHeight, forceExportMode)
+            return GPUImageFilterGroup(filters)
+        }
+
+        fun updateFilterGroup(
+            group: GPUImageFilterGroup,
+            params: EffectParameters,
+            viewWidth: Float = 0f,
+            viewHeight: Float = 0f,
+            forceExportMode: Boolean = false
+        ) {
+            val filters = group.filters
+            val isExport = forceExportMode || viewHeight > 3000f
+            
+            filters.forEach { filter ->
+                when (filter) {
+                    is FilmPipelineFilter -> {
+                        val colorEnabled = params.isColorEnabled
+                        filter.temperature = if (colorEnabled) params.colorTemperature else 6000f
+                        filter.tint = if (colorEnabled) params.colorTint + Parity.TINT_OFFSET else 0f
+                        filter.saturation = if (colorEnabled) params.colorSaturation + Parity.SAT_OFFSET else 1f
+                        filter.richness = if (colorEnabled) params.colorRichness else 0f
+                        filter.subtractiveSat = if (colorEnabled) params.colorSubtractiveSat else 0f
+
+                        val atmosEnabled = params.isAtmosphereEnabled
+                        filter.dehazeAmount = if (atmosEnabled) params.dehazeAmount else 0f
+                        filter.dehazeNeutralize = if (atmosEnabled) params.dehazeAtmosphereNeutralize else 0.5f
+
+                        val splitEnabled = params.isSplitToningEnabled
+                        filter.highlightHue = if (splitEnabled) params.splitToneHighlightHue else 0f
+                        filter.highlightSat = if (splitEnabled) params.splitToneHighlightSat else 0f
+                        filter.shadowHue = if (splitEnabled) params.splitToneShadowHue else 0f
+                        filter.shadowSat = if (splitEnabled) params.splitToneShadowSat else 0f
+                        filter.balance = if (splitEnabled) params.splitToneBalance else 0f
+                        filter.impact = if (splitEnabled) params.splitToneImpact else 0f
+
+                        val lightEnabled = params.isLightEnabled
+                        filter.exposure = if (lightEnabled) params.toneMapExposure else 0f
+                        filter.contrast = if (lightEnabled) params.toneMapContrast else 1f
+                        filter.shoulder = if (lightEnabled) params.toneMapShoulder else 0f
+                        filter.toe = if (lightEnabled) params.toneMapToe + Parity.TOE_OFFSET else 0f
+                        filter.highlights = if (lightEnabled) params.toneMapHighlights else 0f
+                        filter.shadows = if (lightEnabled) params.toneMapShadows else 0f
+                    }
+                    is GlowFilter -> {
+                        val glowIntensityScale = Parity.GLOW_INTENSITY_SCALE
+                        val glowBaseBoost = Parity.GLOW_BASE_BOOST
+                        val spreadScale = Parity.SPREAD_SCALE
+                        val halationThresholdOffset = Parity.HALATION_THRESHOLD_OFFSET
+                        
+                        val halationEnabled = params.isHalationEnabled
+                        filter.halationIntensity = if (halationEnabled) (params.halationIntensity + glowBaseBoost) * glowIntensityScale else 0f
+                        filter.halationThreshold = params.halationThreshold + halationThresholdOffset
+                        filter.halationSpread = params.halationSpread * spreadScale
+                        filter.halationHue = params.halationHue
+                        filter.halationSaturation = params.halationSaturation
+                        filter.showMaskOnly = params.halationShowMask
+                        
+                        val bloomEnabled = params.isBloomEnabled
+                        filter.bloomIntensity = if (bloomEnabled) (params.bloomIntensity + glowBaseBoost) * glowIntensityScale else 0f
+                        filter.bloomThreshold = params.bloomThreshold + halationThresholdOffset
+                        filter.bloomSpread = params.bloomSpread * spreadScale
+                        filter.bloomOpacity = params.bloomOpacity
+                        filter.glowBlackPoint = params.bloomBlackPoint
+                        filter.glowHighlightProtection = params.bloomHighlightProtection
+                        filter.blendMode = if (params.bloomSoftLight) 1 else 0
+                    }
+                    is FilmBlurFilter -> {
+                        val enabled = params.isAtmosphereEnabled
+                        filter.amount = if (enabled) params.blurAmount * Parity.BLUR_SCALE else 0f
+                        filter.isTiltShift = params.blurIsTiltShift
+                        filter.focus = params.blurTiltShiftFocus
+                        if (viewWidth > 0 && viewHeight > 0) filter.aspectRatio = viewWidth / viewHeight
+                    }
+                    is VignetteFilter -> {
+                        val enabled = params.isVignetteEnabled
+                        filter.intensity = if (enabled) params.vignetteIntensity else 0f
+                        filter.radius = params.vignetteRadius + Parity.VIGNETTE_RADIUS_BOOST
+                        filter.softness = params.vignetteFeather
+                        if (viewWidth > 0 && viewHeight > 0) filter.aspectRatio = viewWidth / viewHeight
+                    }
+                    is GrainFilter -> {
+                        val enabled = params.isGrainEnabled
+                        val isExportMode = forceExportMode || viewHeight > 3000f
+                        val grainIntensityScale = if (isExportMode) Parity.GRAIN_EXPORT_SCALE else Parity.GRAIN_PREVIEW_SCALE
+                        
+                        filter.intensity = if (enabled) params.grainIntensity * grainIntensityScale else 0f
+                        filter.size = params.grainSize * Parity.GRAIN_SIZE_SCALE
+                        filter.softness = params.grainSoftness
+                        filter.clumpiness = params.grainClumpiness
+                        filter.shadowCoverage = params.grainShadowCoverage
+                        filter.highlightFade = params.grainHighlightFade
+                        filter.colorNoiseToggle = params.grainColorNoise
+                        filter.chromaIntensity = params.grainChromaIntensity
+                    }
+                    is SpatialTransformFilter -> {
+                        if (viewWidth > 0 && viewHeight > 0) filter.aspect = viewWidth / viewHeight
+                        if (!isExport) {
+                            filter.scale = params.transformScale
+                            filter.offsetX = params.transformOffsetX
+                            filter.offsetY = params.transformOffsetY
+                            filter.rotation = params.transformRotation
+                        } else {
+                            filter.scale = 1.0f
+                            filter.offsetX = 0.0f
+                            filter.offsetY = 0.0f
+                            filter.rotation = 0.0f
+                        }
+                    }
+                }
+            }
+        }
+
+        private fun createFilterList(
+            params: EffectParameters,
+            viewWidth: Float,
+            viewHeight: Float,
+            isExport: Boolean
+        ): List<jp.co.cyberagent.android.gpuimage.filter.GPUImageFilter> {
+            val filmPipelineFilter = FilmPipelineFilter().apply {
                 temperature = params.colorTemperature
-                tint = params.colorTint
-                saturation = params.colorSaturation
+                tint = params.colorTint + Parity.TINT_OFFSET
+                saturation = params.colorSaturation + Parity.SAT_OFFSET
                 richness = params.colorRichness
                 subtractiveSat = params.colorSubtractiveSat
-            }
-            val toneMapFilter = ToneMapFilter().apply {
-                exposure = params.toneMapExposure
-                contrast = params.toneMapContrast
-                shoulder = params.toneMapShoulder
-                toe = params.toneMapToe
-            }
-            val dehazeFilter = DehazeFilter().apply {
-                amount = params.dehazeAmount
-                neutralize = params.dehazeAtmosphereNeutralize
-            }
-            val splitToningFilter = SplitToningFilter().apply {
+                
+                dehazeAmount = params.dehazeAmount
+                dehazeNeutralize = params.dehazeAtmosphereNeutralize
+                
                 highlightHue = params.splitToneHighlightHue
                 highlightSat = params.splitToneHighlightSat
                 shadowHue = params.splitToneShadowHue
                 shadowSat = params.splitToneShadowSat
                 balance = params.splitToneBalance
                 impact = params.splitToneImpact
+                
+                exposure = params.toneMapExposure
+                contrast = params.toneMapContrast
+                shoulder = params.toneMapShoulder
+                toe = params.toneMapToe + Parity.TOE_OFFSET
+                highlights = params.toneMapHighlights
+                shadows = params.toneMapShadows
             }
+            
+            val refHeight = 2000.0f
+
             val glowFilter = GlowFilter().apply {
-                // Halation
-                halationIntensity = params.halationIntensity
-                halationThreshold = params.halationThreshold
-                halationSpread = params.halationSpread
+                referenceHeight = refHeight
+                halationIntensity = (params.halationIntensity + Parity.GLOW_BASE_BOOST) * Parity.GLOW_INTENSITY_SCALE
+                halationThreshold = params.halationThreshold + Parity.HALATION_THRESHOLD_OFFSET
+                halationSpread = params.halationSpread * Parity.SPREAD_SCALE
                 halationHue = params.halationHue
                 halationSaturation = params.halationSaturation
                 showMaskOnly = params.halationShowMask
-                // Bloom
-                bloomIntensity = params.bloomIntensity
-                bloomThreshold = params.bloomThreshold
-                bloomSpread = params.bloomSpread
+                
+                bloomIntensity = (params.bloomIntensity + Parity.GLOW_BASE_BOOST) * Parity.GLOW_INTENSITY_SCALE
+                bloomThreshold = params.bloomThreshold + Parity.HALATION_THRESHOLD_OFFSET
+                bloomSpread = params.bloomSpread * Parity.SPREAD_SCALE
                 bloomOpacity = params.bloomOpacity
                 glowBlackPoint = params.bloomBlackPoint
                 glowHighlightProtection = params.bloomHighlightProtection
                 blendMode = if (params.bloomSoftLight) 1 else 0
             }
             val filmBlurFilter = FilmBlurFilter().apply {
-                amount = params.blurAmount
+                amount = params.blurAmount * Parity.BLUR_SCALE
                 isTiltShift = params.blurIsTiltShift
                 focus = params.blurTiltShiftFocus
                 if (viewWidth > 0 && viewHeight > 0) aspectRatio = viewWidth / viewHeight
             }
             val grainFilter = GrainFilter().apply {
-                intensity = params.grainIntensity
-                size = params.grainSize
+                referenceHeight = refHeight
+                val grainIntensityScale = if (isExport) Parity.GRAIN_EXPORT_SCALE else Parity.GRAIN_PREVIEW_SCALE
+                intensity = params.grainIntensity * grainIntensityScale
+                size = params.grainSize * Parity.GRAIN_SIZE_SCALE
                 softness = params.grainSoftness
                 clumpiness = params.grainClumpiness
                 shadowCoverage = params.grainShadowCoverage
@@ -173,25 +318,28 @@ class EngineContext {
             }
             val vignetteFilter = VignetteFilter().apply {
                 intensity = params.vignetteIntensity
-                radius = params.vignetteRadius
+                radius = params.vignetteRadius + Parity.VIGNETTE_RADIUS_BOOST
                 softness = params.vignetteFeather
+                if (viewWidth > 0 && viewHeight > 0) aspectRatio = viewWidth / viewHeight
             }
             val spatialTransformFilter = SpatialTransformFilter().apply {
                 if (viewWidth > 0 && viewHeight > 0) aspect = viewWidth / viewHeight
+                if (!isExport) {
+                    scale = params.transformScale
+                    offsetX = params.transformOffsetX
+                    offsetY = params.transformOffsetY
+                    rotation = params.transformRotation
+                }
             }
 
-            return GPUImageFilterGroup(listOf(
-                linearizeFilter,
-                colorFilter,
-                toneMapFilter,
-                dehazeFilter,
-                splitToningFilter,
+            return listOf(
+                filmPipelineFilter,
                 glowFilter,
                 filmBlurFilter,
-                grainFilter,
                 vignetteFilter,
+                grainFilter,
                 spatialTransformFilter
-            ))
+            )
         }
     }
 }

@@ -9,6 +9,26 @@ import kotlin.math.max
 
 object ImageUtils {
 
+    fun copyUriToInternalStorage(context: Context, uri: Uri): Uri? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+            val timeStamp = System.currentTimeMillis()
+            val fileName = "imported_image_$timeStamp.jpg"
+            val file = java.io.File(context.filesDir, fileName)
+            val outputStream = java.io.FileOutputStream(file)
+            
+            inputStream.use { input ->
+                outputStream.use { output ->
+                    input.copyTo(output)
+                }
+            }
+            Uri.fromFile(file)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
     /**
      * Loads an image from a URI and downsamples it so its maximum dimension is at most maxDimension.
      */

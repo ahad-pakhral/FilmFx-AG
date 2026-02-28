@@ -11,54 +11,84 @@ class VignetteFilter : GPUImageFilter(
     VIGNETTE_FRAGMENT_SHADER
 ) {
     private var intensityLocation: Int = -1
-    private var smoothnessLocation: Int = -1
+    private var radiusLocation: Int = -1
+    private var softnessLocation: Int = -1
+    private var aspectRatioLocation: Int = -1
 
-    var intensity: Float = 0.5f
+    var intensity: Float = 0.0f
         set(value) {
             field = value
             setFloat(intensityLocation, value)
         }
 
-    var smoothness: Float = 0.5f
+    var radius: Float = 0.8f
         set(value) {
             field = value
-            setFloat(smoothnessLocation, value)
+            setFloat(radiusLocation, value)
+        }
+
+    var softness: Float = 0.5f
+        set(value) {
+            field = value
+            setFloat(softnessLocation, value)
+        }
+
+    var aspectRatio: Float = 1.0f
+        set(value) {
+            field = value
+            setFloat(aspectRatioLocation, value)
         }
 
     override fun onInit() {
         super.onInit()
         intensityLocation = GLES20.glGetUniformLocation(program, "intensity")
-        smoothnessLocation = GLES20.glGetUniformLocation(program, "smoothness")
+        radiusLocation = GLES20.glGetUniformLocation(program, "radius")
+        softnessLocation = GLES20.glGetUniformLocation(program, "softness")
+        aspectRatioLocation = GLES20.glGetUniformLocation(program, "aspectRatio")
     }
 
     override fun onInitialized() {
         super.onInitialized()
-        intensity = 0.5f
-        smoothness = 0.5f
+        intensity = intensity
+        radius = radius
+        softness = softness
+        aspectRatio = aspectRatio
     }
 
     companion object {
         const val VIGNETTE_FRAGMENT_SHADER = """
             precision mediump float;
-            varying vec2 textureCoordinate;
+            varying highp vec2 textureCoordinate;
             uniform sampler2D inputImageTexture;
-            uniform float intensity;
-            uniform float smoothness;
-
+            
+            uniform float intensity; // 0.0 to 1.0 (or negative for white)
+            uniform float radius;    // Midpoint
+            uniform float softness;  // Feathering
+            uniform float aspectRatio; // For elliptical scaling
+            
             void main() {
                 vec4 color = texture2D(inputImageTexture, textureCoordinate);
                 
-                // Distance from center (0.5, 0.5)
-                vec2 dist = textureCoordinate - vec2(0.5, 0.5);
+                // 1. Calculate the distance from center
+                vec2 center = vec2(0.5, 0.5);
+                vec2 coord = textureCoordinate - center;
                 
-                // Quadratic falloff
-                float d = length(dist) * (intensity * 1.5);
+                // Scale the y-coordinate by aspectRatio to make the radial gradient elliptical
+                // (This perfectly matches the underlying image shape regardless of Viewport stretching)
+                coord.y *= aspectRatio;
                 
-                // Smooth transition
-                // As smoothness increases, the vignette becomes softer/starts earlier
-                float vignette = smoothstep(0.8, 0.8 - (smoothness * 0.4), d);
+                float dist = length(coord);
                 
-                gl_FragColor = vec4(color.rgb * vignette, color.a);
+                // 2. Apply the vignette curve
+                // smoothstep creates the 'feathering' between the radius and the edge
+                float vignette = smoothstep(radius, radius - softness, dist);
+                
+                // 3. Cinematic Blending
+                // Instead of just multiplying by black, we 'darken' the image 
+                // This preserves some shadow detail in the corners.
+                vec3 finalColor = mix(color.rgb * (1.0 - intensity), color.rgb, vignette);
+                
+                gl_FragColor = vec4(finalColor, color.a);
             }
         """
     }

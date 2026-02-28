@@ -6,10 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [Project::class], version = 1, exportSchema = false)
+@Database(entities = [Project::class, Preset::class], version = 1, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
+    abstract fun presetDao(): PresetDao
 
     companion object {
         @Volatile

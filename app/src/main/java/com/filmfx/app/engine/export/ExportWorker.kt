@@ -137,7 +137,7 @@ class ExportWorker(
         
         try {
             contentResolver.openOutputStream(uri)?.use { out ->
-                resultBitmap!!.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                resultBitmap!!.compress(Bitmap.CompressFormat.JPEG, 100, out)
             }
             resultBitmap!!.recycle()
             

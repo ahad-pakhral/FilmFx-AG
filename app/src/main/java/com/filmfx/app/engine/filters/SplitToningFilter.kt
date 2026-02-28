@@ -61,17 +61,18 @@ class SplitToningFilter : GPUImageFilter(
 
     override fun onInitialized() {
         super.onInitialized()
-        highlightHue = 0.0f
-        highlightSat = 0.0f
-        shadowHue = 0.0f
-        shadowSat = 0.0f
-        balance = 0.0f
-        impact = 1.0f
+        highlightHue = highlightHue
+        highlightSat = highlightSat
+        shadowHue = shadowHue
+        shadowSat = shadowSat
+        balance = balance
+        impact = impact
     }
 
     companion object {
-        const val SPLIT_TONING_FRAGMENT_SHADER = """
-            varying highp vec2 textureCoordinate;
+        val SPLIT_TONING_FRAGMENT_SHADER = """
+precision highp float;
+varying highp vec2 textureCoordinate;
             uniform sampler2D inputImageTexture;
 
             uniform highp float highlightHue;
@@ -89,9 +90,9 @@ class SplitToningFilter : GPUImageFilter(
                 highp float m = 0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b;
                 highp float s = 0.0883024619 * c.r + 0.2817188976 * c.g + 0.6299787005 * c.b;
 
-                highp float l_ = pow(l, 1.0/3.0);
-                highp float m_ = pow(m, 1.0/3.0);
-                highp float s_ = pow(s, 1.0/3.0);
+                highp float l_ = pow(max(l, 0.0), 1.0/3.0);
+                highp float m_ = pow(max(m, 0.0), 1.0/3.0);
+                highp float s_ = pow(max(s, 0.0), 1.0/3.0);
 
                 return vec3(
                     0.2104542551 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
@@ -118,7 +119,11 @@ class SplitToningFilter : GPUImageFilter(
 
             void main() {
                 highp vec4 textureColor = texture2D(inputImageTexture, textureCoordinate);
-                highp vec3 labOriginal = linear_srgb_to_oklab(textureColor.rgb);
+                
+                // Un-premultiply alpha for math correctness
+                highp vec3 rgb = textureColor.rgb / max(textureColor.a, 0.0001);
+                
+                highp vec3 labOriginal = linear_srgb_to_oklab(rgb);
                 highp vec3 lab = labOriginal;
 
                 // Normalised lightness for mask
@@ -147,11 +152,12 @@ class SplitToningFilter : GPUImageFilter(
                 lab.z += hB * hWeight + sB * sWeight;
 
                 // 3. Global Impact Mix
-                lab = mix(labOriginal, lab, impact);
-
                 highp vec3 result = oklab_to_linear_srgb(lab);
-                gl_FragColor = vec4(result, textureColor.a);
+                result = mix(rgb, result, impact);
+                
+                // Re-premultiply alpha
+                gl_FragColor = vec4(result * textureColor.a, textureColor.a);
             }
-        """
+        """.trimIndent()
     }
 }
