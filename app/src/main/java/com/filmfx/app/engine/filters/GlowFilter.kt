@@ -320,13 +320,14 @@ precision highp float;
         vec3 color = max(max(c0, c1), max(c2, c3));
         float luminance = luma(color);
         
-        // Solid Extraction ("Energy Density"):
-        // Captures the whole light source to act as an energy reservoir
-        // that allows the blur to bleed significantly further out.
-        float mask = smoothstep(threshold - 0.1, threshold + 0.1, luminance);
+        // Phase 12: Narrow Fringe-Only Trigger (0.04 total width)
+        // Creates an ultra-thin "wire" exactly at the light/shadow junction.
+        float outer = smoothstep(threshold - 0.02, threshold, luminance);
+        float inner = smoothstep(threshold, threshold + 0.02, luminance);
+        float edgeMask = outer - inner;
         
-        // Apply reddish-orange tint directly here
-        gl_FragColor = vec4(mask * 1.5, mask * 0.2, mask * 0.02, 1.0);
+        // Boosted intensity (2.5) ensures the thin line carries enough energy through the pyramid.
+        gl_FragColor = vec4(edgeMask * 2.5, edgeMask * 0.3, edgeMask * 0.05, 1.0);
     }
     """.trimIndent()
 ) {
@@ -509,9 +510,9 @@ precision highp float;
         vec3 h3 = texture2D(halationScale3, textureCoordinate).rgb;
         vec3 h4 = texture2D(halationScale4, textureCoordinate).rgb;
         
-        // Phase 10: Tighter Weighting for "Edge Bite"
-        // Boosting the sharpest scale (h1) keeps details like hair and fine edges crisp.
-        vec3 combinedHalo = h1 * 0.6 + h2 * 0.25 + h3 * 0.1 + h4 * 0.05;
+        // Phase 12: Scale-Lock for High-Frequency "Edge Bite"
+        // At high resolutions, broad scales create "fog." We lock the sharpest (h1).
+        vec3 combinedHalo = h1 * 0.7 + h2 * 0.2 + h3 * 0.08 + h4 * 0.02;
         
         // Sample all bloom scales
         vec3 b1 = texture2D(inputImageTexture3, textureCoordinate).rgb;
@@ -525,27 +526,27 @@ precision highp float;
         vec3 base = baseColor.rgb;
         float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
         
-        // Apply Hue and Saturation
+        // Phase 12: Visibility-Gated Physics (The Shadow-Gate)
+        // Light cannot bleed onto surfaces that are already bright.
+        // This suppresses halation on faces, ground patches, and highlights.
+        float shadowGate = 1.0 - smoothstep(0.1, 0.4, luma);
+        
+        // Apply Hue, Saturation, and Shadow-Gate
         vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
         float haloLuma = dot(gradedHalo, vec3(0.2126, 0.7152, 0.0722));
         gradedHalo = mix(vec3(haloLuma), gradedHalo, min(halationSaturation, 2.5));
-
-        // Phase 10: Physical Accuracy Fix - Core Protection
-        // Reduces red tint in the center of intense light sources while allowing it to bleed into shadows.
-        float coreMask = smoothstep(0.5, 0.9, luma);
-        vec3 physicalHalo = gradedHalo * (1.0 - (coreMask * 0.7)); 
         
-        vec3 halation = physicalHalo * halationIntensity;
+        vec3 halation = gradedHalo * halationIntensity * shadowGate;
         vec3 bloom = combinedBloom * bloomIntensity;
         
-        // Black Point / Haze Control (Bloom only)
+        // Black Point / Haze Control (Keep restricted to Bloom)
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
-        // 1. Wrap-Around Blending (Additive + Reinhard Tone Map)
-        // Forces light to "wrap" over dark objects (occlusion overwrite)
+        // Phase 12: Wrap-Around Additive Blend (Rich Tone Map)
+        // Uses a softer coefficient (0.08) to keep shadow transitions organic.
         vec3 baseWithHalation = base + halation;
-        baseWithHalation = baseWithHalation / (1.0 + baseWithHalation * 0.15);
+        baseWithHalation = baseWithHalation / (1.0 + baseWithHalation * 0.08);
         
         // 2. Calculate image with FULL glow (Screen/SoftLight/Additive bloom over baseWithHalation)
         vec3 screenFull = 1.0 - (1.0 - baseWithHalation) * (1.0 - bloom);
