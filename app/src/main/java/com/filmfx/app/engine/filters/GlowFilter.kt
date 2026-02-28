@@ -317,17 +317,25 @@ precision highp float;
         vec3 c2 = texture2D(inputImageTexture, textureCoordinate + vec2(0.0, texelHeight)).rgb;
         vec3 c3 = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth, texelHeight)).rgb;
         
-        vec3 color = max(max(c0, c1), max(c2, c3));
-        float luminance = luma(color);
+        // Sample center and a slightly offset neighbor for contrast check
+        vec3 center = max(max(c0, c1), max(c2, c3));
+        vec3 neighbor = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth * 2.0, texelHeight * 2.0)).rgb;
         
-        // Phase 12: Narrow Fringe-Only Trigger (0.04 total width)
-        // Creates an ultra-thin "wire" exactly at the light/shadow junction.
-        float outer = smoothstep(threshold - 0.02, threshold, luminance);
-        float inner = smoothstep(threshold, threshold + 0.02, luminance);
-        float edgeMask = outer - inner;
+        float lCenter = luma(center);
+        float lNeighbor = luma(neighbor);
         
-        // Boosted intensity (2.5) ensures the thin line carries enough energy through the pyramid.
-        gl_FragColor = vec4(edgeMask * 2.5, edgeMask * 0.3, edgeMask * 0.05, 1.0);
+        // Edge-Lock ("Delta Extraction"):
+        // Triggers based on contrast (spatial difference) instead of absolute brightness.
+        // This anchors halation to boundaries like the cat's tail and prevents "Heat Map" expansion.
+        float delta = abs(lCenter - lNeighbor);
+        float edgeTrigger = smoothstep(threshold - 0.1, threshold + 0.1, delta);
+        
+        // Brightness Mask: Ensures halation only triggers on edges of relatively bright highlights.
+        float brightnessMask = smoothstep(0.3, 0.6, lCenter);
+        float finalMask = edgeTrigger * brightnessMask;
+        
+        // Multiplier (3.0) gives the thin edge-lock enough energy for the pyramid blur.
+        gl_FragColor = vec4(finalMask * 3.0, finalMask * 0.4, finalMask * 0.05, 1.0);
     }
     """.trimIndent()
 ) {
@@ -510,9 +518,9 @@ precision highp float;
         vec3 h3 = texture2D(halationScale3, textureCoordinate).rgb;
         vec3 h4 = texture2D(halationScale4, textureCoordinate).rgb;
         
-        // Phase 12: Scale-Lock for High-Frequency "Edge Bite"
-        // At high resolutions, broad scales create "fog." We lock the sharpest (h1).
-        vec3 combinedHalo = h1 * 0.7 + h2 * 0.2 + h3 * 0.08 + h4 * 0.02;
+        // Edge-Lock: Scale Stabilization
+        // Prioritizing h1 (micro-detail) at 0.8 and dropping h4 to maintain "Edge Bite."
+        vec3 combinedHalo = h1 * 0.8 + h2 * 0.15 + h3 * 0.05;
         
         // Sample all bloom scales
         vec3 b1 = texture2D(inputImageTexture3, textureCoordinate).rgb;
@@ -526,10 +534,9 @@ precision highp float;
         vec3 base = baseColor.rgb;
         float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
         
-        // Phase 12: Visibility-Gated Physics (The Shadow-Gate)
-        // Light cannot bleed onto surfaces that are already bright.
-        // This suppresses halation on faces, ground patches, and highlights.
-        float shadowGate = 1.0 - smoothstep(0.1, 0.4, luma);
+        // Tighter Shadow-Gate: Stricter enforcement to prevent broad highlight spill.
+        // This is the "Safety Valve" that stops the heat-map expansion.
+        float shadowGate = 1.0 - smoothstep(0.05, 0.35, luma);
         
         // Apply Hue, Saturation, and Shadow-Gate
         vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
@@ -543,10 +550,14 @@ precision highp float;
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
-        // Phase 12: Wrap-Around Additive Blend (Rich Tone Map)
-        // Uses a softer coefficient (0.08) to keep shadow transitions organic.
-        vec3 baseWithHalation = base + halation;
-        baseWithHalation = baseWithHalation / (1.0 + baseWithHalation * 0.08);
+        // Additive Blend + Luminance Protection
+        // Pulls color back toward original base in bright ground areas to prevent orange tints.
+        vec3 result = base + halation;
+        float groundProtection = smoothstep(0.4, 0.7, luma);
+        result = mix(result, base, groundProtection * 0.8);
+        
+        // Final Reinhard (Stabilized for rich shadows)
+        vec3 baseWithHalation = result / (1.0 + result * 0.08);
         
         // 2. Calculate image with FULL glow (Screen/SoftLight/Additive bloom over baseWithHalation)
         vec3 screenFull = 1.0 - (1.0 - baseWithHalation) * (1.0 - bloom);
