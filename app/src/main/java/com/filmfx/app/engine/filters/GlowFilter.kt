@@ -194,12 +194,14 @@ class GlowFilter : GPUImageFilter() {
     var halationSpread: Float = 0.0f
         set(value) {
             field = value
-            // Quadratic response with a generous base for visibility at 0.0
-            val q = (value * value) * 1.5f + 0.1f
-            halationBlur[0].radius = 1.0f * q;  halationBlur[1].radius = 1.0f * q
-            halationBlur[2].radius = 3.0f * q;  halationBlur[3].radius = 3.0f * q
-            halationBlur[4].radius = 8.0f * q;  halationBlur[5].radius = 8.0f * q
-            halationBlur[6].radius = 16.0f * q; halationBlur[7].radius = 16.0f * q
+            // Phase 16: Continuous exponential curve across the pyramid to eliminate banding/sharp edges
+            val baseRadius = (value * 3.0f) + 0.5f 
+            
+            // Smoothly doubling the radius at each scale creates a natural optical falloff
+            halationBlur[0].radius = baseRadius * 1.0f;  halationBlur[1].radius = baseRadius * 1.0f
+            halationBlur[2].radius = baseRadius * 2.0f;  halationBlur[3].radius = baseRadius * 2.0f
+            halationBlur[4].radius = baseRadius * 4.0f;  halationBlur[5].radius = baseRadius * 4.0f
+            halationBlur[6].radius = baseRadius * 8.0f;  halationBlur[7].radius = baseRadius * 8.0f
         }
 
     var bloomSpread: Float = 0.0f
@@ -511,9 +513,9 @@ precision highp float;
         vec3 h3 = texture2D(halationScale3, textureCoordinate).rgb;
         vec3 h4 = texture2D(halationScale4, textureCoordinate).rgb;
         
-        // Edge-Lock: Scale Stabilization
-        // Prioritizing h1 (micro-detail) at 0.8 and dropping h4 to maintain "Edge Bite."
-        vec3 combinedHalo = h1 * 0.8 + h2 * 0.15 + h3 * 0.05;
+        // Phase 16: Smooth Seamless Accumulation (No more harsh weighting bias)
+        // This creates a perfect, continuous optical gradient across all frequencies.
+        vec3 combinedHalo = h1 * 0.4 + h2 * 0.3 + h3 * 0.2 + h4 * 0.1;
         
         // Sample all bloom scales
         vec3 b1 = texture2D(inputImageTexture3, textureCoordinate).rgb;
@@ -527,39 +529,36 @@ precision highp float;
         vec3 base = baseColor.rgb;
         float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
         
-        // Phase 14: Tighter Shadow-Gate: Stricter enforcement to prevent broad highlight spill.
-        // Phase 15: Widen Shadow-Gate to create a natural, organic glow falloff.
-        // The halation will now perfectly hug the dark side of the highlight boundary.
-        float shadowGate = 1.0 - smoothstep(0.0, 0.6, luma);
+        // --- THE PHASE 16 FIX: NO MORE SHADOW GATE ---
+        // We removed the shadowGate that was causing the "digital gap". 
+        // The halation will now physically overlap BOTH highlights and shadows.
         
-        // Apply Hue, Saturation, and Shadow-Gate
+        // Apply Hue and Saturation
         vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
         float haloLuma = dot(gradedHalo, vec3(0.2126, 0.7152, 0.0722));
         gradedHalo = mix(vec3(haloLuma), gradedHalo, min(halationSaturation, 2.5));
         
-        vec3 halation = gradedHalo * halationIntensity * shadowGate;
+        vec3 halation = gradedHalo * halationIntensity;
         vec3 bloom = combinedBloom * bloomIntensity;
         
         // Black Point / Haze Control (Keep restricted to Bloom)
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
-        // Phase 15: Volumetric Additive Blend (Rich Tone Map)
-        // No more manual luminance protection; the Shadow-Gate now handles highlight purity.
-        vec3 result = base + halation;
-        vec3 baseWithHalation = result / (1.0 + result * 0.08);
+        // Phase 16: Physical Screen Blend for Halation.
+        // Integrates the red light without ever creating a "gap" or overwriting pure whites.
+        vec3 baseWithHalation = 1.0 - (1.0 - base) * (1.0 - clamp(halation, 0.0, 1.0));
         
-        // 2. Calculate image with FULL glow (Screen/SoftLight/Additive bloom over baseWithHalation)
+        // 2. Calculate image with FULL glow (Bloom applied over Halation)
         vec3 screenFull = 1.0 - (1.0 - baseWithHalation) * (1.0 - bloom);
-        vec3 additiveFull = baseWithHalation + bloom;
         vec3 softLightFull = (1.0 - 2.0 * bloom) * (baseWithHalation * baseWithHalation) + (2.0 * bloom * baseWithHalation);
         
         vec3 fullGlowImage = (blendMode == 1) ? softLightFull : screenFull;
         
-        // 3. Opacity drives the blend between the Halation-only image and the Full-Glow image
+        // 3. Opacity drives the blend between core halation and full atmospheric bloom
         vec3 finalColor = mix(baseWithHalation, fullGlowImage, bloomOpacity);
         
-        // Final Highlight Protection
+        // Final Core Protection (Protects extreme highlight core values)
         float protection = pow(luma, 3.0) * glowHighlightProtection;
         finalColor = mix(finalColor, base, clamp(protection, 0.0, 1.0));
 
