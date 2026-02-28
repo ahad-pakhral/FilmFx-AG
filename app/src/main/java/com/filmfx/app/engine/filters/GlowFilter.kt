@@ -509,9 +509,9 @@ precision highp float;
         vec3 h3 = texture2D(halationScale3, textureCoordinate).rgb;
         vec3 h4 = texture2D(halationScale4, textureCoordinate).rgb;
         
-        // Sum scales with logarithmic weighting for smooth energy distribution
-        // This ensures close-range halation is sharp while maintaining a broad soft falloff
-        vec3 combinedHalo = h1 * 0.4 + h2 * 0.3 + h3 * 0.2 + h4 * 0.1;
+        // Phase 10: Tighter Weighting for "Edge Bite"
+        // Boosting the sharpest scale (h1) keeps details like hair and fine edges crisp.
+        vec3 combinedHalo = h1 * 0.6 + h2 * 0.25 + h3 * 0.1 + h4 * 0.05;
         
         // Sample all bloom scales
         vec3 b1 = texture2D(inputImageTexture3, textureCoordinate).rgb;
@@ -522,27 +522,30 @@ precision highp float;
         vec3 combinedBloom = b1 * 0.4 + b2 * 0.3 + b3 * 0.2 + b4 * 0.1;
 
         vec4 baseColor = texture2D(inputImageTexture2, textureCoordinate);
-        
-        // Apply Hue and Saturation to the combined halation mask
-        vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
-        float haloLuma = dot(gradedHalo, vec3(0.2126, 0.7152, 0.0722));
-        gradedHalo = mix(vec3(haloLuma), gradedHalo, min(halationSaturation, 2.5)); // Clamp extreme saturation
-        
-        vec3 halation = gradedHalo * halationIntensity;
-        vec3 bloom = combinedBloom * bloomIntensity;
         vec3 base = baseColor.rgb;
-        
         float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
         
-        // Black Point / Haze Control
+        // Apply Hue and Saturation
+        vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
+        float haloLuma = dot(gradedHalo, vec3(0.2126, 0.7152, 0.0722));
+        gradedHalo = mix(vec3(haloLuma), gradedHalo, min(halationSaturation, 2.5));
+
+        // Phase 10: Physical Accuracy Fix - Core Protection
+        // Reduces red tint in the center of intense light sources while allowing it to bleed into shadows.
+        float coreMask = smoothstep(0.5, 0.9, luma);
+        vec3 physicalHalo = gradedHalo * (1.0 - (coreMask * 0.7)); 
+        
+        vec3 halation = physicalHalo * halationIntensity;
+        vec3 bloom = combinedBloom * bloomIntensity;
+        
+        // Black Point / Haze Control (Bloom only)
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
         // 1. Wrap-Around Blending (Additive + Reinhard Tone Map)
-        // This forces light to "wrap" over dark objects (occlusion overwrite)
-        // while preventing digital white-clipping.
+        // Forces light to "wrap" over dark objects (occlusion overwrite)
         vec3 baseWithHalation = base + halation;
-        baseWithHalation = baseWithHalation / (1.0 + baseWithHalation * 0.2);
+        baseWithHalation = baseWithHalation / (1.0 + baseWithHalation * 0.15);
         
         // 2. Calculate image with FULL glow (Screen/SoftLight/Additive bloom over baseWithHalation)
         vec3 screenFull = 1.0 - (1.0 - baseWithHalation) * (1.0 - bloom);
