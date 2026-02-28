@@ -84,12 +84,11 @@ class GlowFilter : GPUImageFilter() {
         super.onOutputSizeChanged(width, height)
         destroyFramebuffers()
         
-        val fboCount = 19
+        val fboCount = 19 // matches sizes.size
         val fbos = IntArray(fboCount)
         val textures = IntArray(fboCount)
         
         val targetH = if (referenceHeight > 10f) referenceHeight else height.toFloat()
-        // Determine how much to scale down the actual image height to match targetH
         val scale = minOf(1f, targetH / height.toFloat())
         
         val workW = maxOf((width * scale).toInt(), 1)
@@ -254,25 +253,46 @@ class GlowFilter : GPUImageFilter() {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
         copyFilter.onDraw(textureId, cubeBuffer, textureBuffer)
 
-        // Halation Pipeline (9-tap Multi-scale H/V)
+        // Halation Pipeline: Accurate Multi-Scale Pyramid
         renderPass(halationExtractFilter, texs[0], 1)
-        var currentTex = texs[1]
-        for (i in 0..7) { renderPass(halationBlur[i], currentTex, i + 2); currentTex = texs[i + 2] }
-        // Final result in texs[9]
+        
+        // Scale 1 (1/2 Res)
+        renderPass(halationBlur[0], texs[1], 2)
+        renderPass(halationBlur[1], texs[2], 3)
+        // Scale 2 (1/4 Res)
+        renderPass(halationBlur[2], texs[3], 4)
+        renderPass(halationBlur[3], texs[4], 5)
+        // Scale 3 (1/8 Res)
+        renderPass(halationBlur[4], texs[5], 6)
+        renderPass(halationBlur[5], texs[6], 7)
+        // Scale 4 (1/16 Res)
+        renderPass(halationBlur[6], texs[7], 8)
+        renderPass(halationBlur[7], texs[8], 9)
 
-        // Bloom Pipeline (9-tap Multi-scale H/V)
+        // Bloom Pipeline: Accurate Multi-Scale Pyramid
         renderPass(bloomExtractFilter, texs[0], 10)
-        currentTex = texs[10]
-        for (i in 0..7) { renderPass(bloomBlur[i], currentTex, i + 11); currentTex = texs[i + 11] }
-        // Final result in texs[18]
+        
+        // Scale 1 (1/2 Res)
+        renderPass(bloomBlur[0], texs[10], 11)
+        renderPass(bloomBlur[1], texs[11], 12)
+        // Scale 2 (1/4 Res)
+        renderPass(bloomBlur[2], texs[12], 13)
+        renderPass(bloomBlur[3], texs[13], 14)
+        // Scale 3 (1/8 Res)
+        renderPass(bloomBlur[4], texs[14], 15)
+        renderPass(bloomBlur[5], texs[15], 16)
+        // Scale 4 (1/16 Res)
+        renderPass(bloomBlur[6], texs[16], 17)
+        renderPass(bloomBlur[7], texs[17], 18)
 
-        // Blend Pass
+        // Blend Pass: Multi-Scale Accumulation
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, previousFbo[0])
         GLES20.glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3])
         
-        blendFilter.setOriginalAndBloomTextures(texs[0], texs[18])
-        // Halation mask is passed as the primary input for the onDraw cycle
-        blendFilter.onDraw(texs[9], glCubeBuffer, glTextureBuffer)
+        blendFilter.setOriginalAndBloomTextures(texs[0], texs[12], texs[14], texs[16], texs[18])
+        // Halation Scale 1 is texs[3]. Scales 2, 3, 4 are texs[5], texs[7], texs[9]
+        blendFilter.setHalationScales(texs[5], texs[7], texs[9])
+        blendFilter.onDraw(texs[3], glCubeBuffer, glTextureBuffer)
     }
 }
 
@@ -447,9 +467,19 @@ private class GlowBlendFilter : GPUImageFilter(
 precision highp float;
     varying vec2 textureCoordinate;
 
-    uniform sampler2D inputImageTexture;  // Halation mask
+    uniform sampler2D inputImageTexture;  // Halation Scale 1 (Sharpest)
     uniform sampler2D inputImageTexture2; // Base image
-    uniform sampler2D inputImageTexture3; // Bloom mask
+    uniform sampler2D inputImageTexture3; // Bloom Scale 1
+    
+    // Additional Scales for High-Quality Halation
+    uniform sampler2D halationScale2;
+    uniform sampler2D halationScale3;
+    uniform sampler2D halationScale4;
+    
+    // Additional Scales for High-Quality Bloom
+    uniform sampler2D bloomScale2;
+    uniform sampler2D bloomScale3;
+    uniform sampler2D bloomScale4;
 
     uniform float halationIntensity;
     uniform float bloomIntensity;
@@ -468,16 +498,33 @@ precision highp float;
     }
 
     void main() {
-        vec4 haloColor = texture2D(inputImageTexture, textureCoordinate);
-        vec4 baseColor = texture2D(inputImageTexture2, textureCoordinate);
-        vec4 bloomColor = texture2D(inputImageTexture3, textureCoordinate);
+        // Sample all halation scales
+        vec3 h1 = texture2D(inputImageTexture, textureCoordinate).rgb;
+        vec3 h2 = texture2D(halationScale2, textureCoordinate).rgb;
+        vec3 h3 = texture2D(halationScale3, textureCoordinate).rgb;
+        vec3 h4 = texture2D(halationScale4, textureCoordinate).rgb;
         
-        vec3 gradedHalo = hueShift(haloColor.rgb, halationHue * 0.5);
+        // Sum scales with logarithmic weighting for smooth energy distribution
+        // This ensures close-range halation is sharp while maintaining a broad soft falloff
+        vec3 combinedHalo = h1 * 0.4 + h2 * 0.3 + h3 * 0.2 + h4 * 0.1;
+        
+        // Sample all bloom scales
+        vec3 b1 = texture2D(inputImageTexture3, textureCoordinate).rgb;
+        vec3 b2 = texture2D(bloomScale2, textureCoordinate).rgb;
+        vec3 b3 = texture2D(bloomScale3, textureCoordinate).rgb;
+        vec3 b4 = texture2D(bloomScale4, textureCoordinate).rgb;
+        
+        vec3 combinedBloom = b1 * 0.4 + b2 * 0.3 + b3 * 0.2 + b4 * 0.1;
+
+        vec4 baseColor = texture2D(inputImageTexture2, textureCoordinate);
+        
+        // Apply Hue and Saturation to the combined halation mask
+        vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
         float haloLuma = dot(gradedHalo, vec3(0.2126, 0.7152, 0.0722));
-        gradedHalo = mix(vec3(haloLuma), gradedHalo, halationSaturation);
+        gradedHalo = mix(vec3(haloLuma), gradedHalo, min(halationSaturation, 2.5)); // Clamp extreme saturation
         
         vec3 halation = gradedHalo * halationIntensity;
-        vec3 bloom = bloomColor.rgb * bloomIntensity;
+        vec3 bloom = combinedBloom * bloomIntensity;
         vec3 base = baseColor.rgb;
         
         float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
@@ -506,7 +553,7 @@ precision highp float;
         finalColor = mix(finalColor, base, clamp(protection, 0.0, 1.0));
 
         if (showMaskOnly > 0.5) {
-            gl_FragColor = vec4(clamp(totalGlow, 0.0, 1.0), baseColor.a);
+            gl_FragColor = vec4(clamp(gradedHalo, 0.0, 1.0), 1.0);
         } else {
             gl_FragColor = vec4(clamp(finalColor, 0.0, 1.0), baseColor.a);
         }
@@ -525,9 +572,21 @@ precision highp float;
     
     private var customTexture2Loc = -1
     private var customTexture3Loc = -1
+    private var halationScale2Loc = -1
+    private var halationScale3Loc = -1
+    private var halationScale4Loc = -1
+    private var bloomScale2Loc = -1
+    private var bloomScale3Loc = -1
+    private var bloomScale4Loc = -1
 
     private var originalTextureId = -1
-    private var bloomTextureId = -1
+    private var bloom1TextureId = -1
+    private var halation2Id = -1
+    private var halation3Id = -1
+    private var halation4Id = -1
+    private var bloom2Id = -1
+    private var bloom3Id = -1
+    private var bloom4Id = -1
 
     var halationIntensity = 0f
         set(value) { field = value; setFloat(halationIntensityLoc, value) }
@@ -562,6 +621,14 @@ precision highp float;
         
         customTexture2Loc = GLES20.glGetUniformLocation(program, "inputImageTexture2")
         customTexture3Loc = GLES20.glGetUniformLocation(program, "inputImageTexture3")
+        
+        halationScale2Loc = GLES20.glGetUniformLocation(program, "halationScale2")
+        halationScale3Loc = GLES20.glGetUniformLocation(program, "halationScale3")
+        halationScale4Loc = GLES20.glGetUniformLocation(program, "halationScale4")
+        
+        bloomScale2Loc = GLES20.glGetUniformLocation(program, "bloomScale2")
+        bloomScale3Loc = GLES20.glGetUniformLocation(program, "bloomScale3")
+        bloomScale4Loc = GLES20.glGetUniformLocation(program, "bloomScale4")
     }
 
     override fun onInitialized() {
@@ -577,22 +644,62 @@ precision highp float;
         setFloat(glowHighlightProtectionLoc, glowHighlightProtection)
     }
 
-    fun setOriginalAndBloomTextures(origId: Int, bloomId: Int) {
+    fun setOriginalAndBloomTextures(origId: Int, b1: Int, b2: Int, b3: Int, b4: Int) {
         originalTextureId = origId
-        bloomTextureId = bloomId
+        bloom1TextureId = b1
+        bloom2Id = b2
+        bloom3Id = b3
+        bloom4Id = b4
+    }
+
+    fun setHalationScales(h2: Int, h3: Int, h4: Int) {
+        halation2Id = h2
+        halation3Id = h3
+        halation4Id = h4
     }
 
     override fun onDrawArraysPre() {
         super.onDrawArraysPre()
-        if (originalTextureId != -1 && customTexture2Loc != -1) {
+        // Texture slots: 0=PrimaryInput(h1), 3=Original, 4=b1, 5=b2, 6=b3, 7=b4, 8=h2, 9=h3, 10=h4
+        if (originalTextureId != -1) {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE3)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, originalTextureId)
             GLES20.glUniform1i(customTexture2Loc, 3)
         }
-        if (bloomTextureId != -1 && customTexture3Loc != -1) {
+        if (bloom1TextureId != -1) {
             GLES20.glActiveTexture(GLES20.GL_TEXTURE4)
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bloomTextureId)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bloom1TextureId)
             GLES20.glUniform1i(customTexture3Loc, 4)
+        }
+        if (bloom2Id != -1) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE5)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bloom2Id)
+            GLES20.glUniform1i(bloomScale2Loc, 5)
+        }
+        if (bloom3Id != -1) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE6)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bloom3Id)
+            GLES20.glUniform1i(bloomScale3Loc, 6)
+        }
+        if (bloom4Id != -1) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE7)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bloom4Id)
+            GLES20.glUniform1i(bloomScale4Loc, 7)
+        }
+        if (halation2Id != -1) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE8)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, halation2Id)
+            GLES20.glUniform1i(halationScale2Loc, 8)
+        }
+        if (halation3Id != -1) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE9)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, halation3Id)
+            GLES20.glUniform1i(halationScale3Loc, 9)
+        }
+        if (halation4Id != -1) {
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE10)
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, halation4Id)
+            GLES20.glUniform1i(halationScale4Loc, 10)
         }
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
     }
