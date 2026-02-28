@@ -175,7 +175,9 @@ class GlowFilter : GPUImageFilter() {
         }
 
     var halationIntensity: Float = 0.0f
-        set(value) { field = value; blendFilter.halationIntensity = value }
+        // Phase 14: Supercharged intensity (4x multiplier)
+        // Allows for both subtle orthodox looks and extreme artistic bleeds.
+        set(value) { field = value; blendFilter.halationIntensity = value * 4.0f }
 
     var bloomIntensity: Float = 0.0f
         set(value) { field = value; blendFilter.bloomIntensity = value }
@@ -334,8 +336,9 @@ precision highp float;
         // Combine: Pixel must be bright AND on a contrast boundary.
         float finalMask = highlightMask * edgeMask;
         
-        // Lower multiplier (1.5) ensures the mask doesn't clip before the pyramid blur.
-        gl_FragColor = vec4(finalMask * 1.5, finalMask * 0.2, finalMask * 0.02, 1.0);
+        // Phase 14: Pumped Source Energy (5.0 multiplier)
+        // Ensures the ultra-thin edge survives the massive spread blurs.
+        gl_FragColor = vec4(finalMask * 5.0, finalMask * 0.8, finalMask * 0.1, 1.0);
     }
     """.trimIndent()
 ) {
@@ -550,11 +553,12 @@ precision highp float;
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
-        // Additive Blend + Luminance Protection
-        // Pulls color back toward original base in bright ground areas to prevent orange tints.
+        // Phase 14: Relaxed Luminance Protection
+        // Shifted higher (0.6-0.95) and reduced effect (0.4) to allow for 
+        // aggressive bleeds over bright stone while protecting pure whites.
         vec3 result = base + halation;
-        float groundProtection = smoothstep(0.4, 0.7, luma);
-        result = mix(result, base, groundProtection * 0.8);
+        float groundProtection = smoothstep(0.6, 0.95, luma);
+        result = mix(result, base, groundProtection * 0.4);
         
         // Final Reinhard (Stabilized for rich shadows)
         vec3 baseWithHalation = result / (1.0 + result * 0.08);
