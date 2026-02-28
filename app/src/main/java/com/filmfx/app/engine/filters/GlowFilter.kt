@@ -319,26 +319,16 @@ precision highp float;
         vec3 c2 = texture2D(inputImageTexture, textureCoordinate + vec2(0.0, texelHeight)).rgb;
         vec3 c3 = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth, texelHeight)).rgb;
         
-        // Phase 13: Highlight-Steered Edge-Lock
-        // 1. Highlight Mask: Threshold now correctly drives absolute brightness requirement.
-        // Sample in a 2x2 grid to catch sub-pixel highlights.
+        // Phase 15: Volumetric Light Source (No Edge Mask)
+        // We extract the entire bright area smoothly to act as the "emissive core."
         vec3 center = max(max(c0, c1), max(c2, c3));
         float lCenter = luma(center);
-        float highlightMask = smoothstep(threshold - 0.05, threshold + 0.15, lCenter);
         
-        // 2. Edge-Lock Mask: Fixed-sensitivity contrast check.
-        // Only triggers if there is a sharp transition (bright pixel next to dark).
-        vec3 neighbor = texture2D(inputImageTexture, textureCoordinate + vec2(texelWidth * 2.0, texelHeight * 2.0)).rgb;
-        float lNeighbor = luma(neighbor);
-        float delta = abs(lCenter - lNeighbor);
-        float edgeMask = smoothstep(0.1, 0.4, delta);
+        // Extract the ENTIRE bright area. No contrast boundaries or wireframes.
+        float highlightMask = smoothstep(threshold - 0.1, threshold + 0.2, lCenter);
         
-        // Combine: Pixel must be bright AND on a contrast boundary.
-        float finalMask = highlightMask * edgeMask;
-        
-        // Phase 14: Pumped Source Energy (5.0 multiplier)
-        // Ensures the ultra-thin edge survives the massive spread blurs.
-        gl_FragColor = vec4(finalMask * 5.0, finalMask * 0.8, finalMask * 0.1, 1.0);
+        // Massive Red/Orange energy (3.0 for Red) to feed the multi-scale pyramid.
+        gl_FragColor = vec4(highlightMask * 3.0, highlightMask * 0.6, highlightMask * 0.05, 1.0);
     }
     """.trimIndent()
 ) {
@@ -537,9 +527,10 @@ precision highp float;
         vec3 base = baseColor.rgb;
         float luma = dot(base, vec3(0.2126, 0.7152, 0.0722));
         
-        // Tighter Shadow-Gate: Stricter enforcement to prevent broad highlight spill.
-        // This is the "Safety Valve" that stops the heat-map expansion.
-        float shadowGate = 1.0 - smoothstep(0.05, 0.35, luma);
+        // Phase 14: Tighter Shadow-Gate: Stricter enforcement to prevent broad highlight spill.
+        // Phase 15: Widen Shadow-Gate to create a natural, organic glow falloff.
+        // The halation will now perfectly hug the dark side of the highlight boundary.
+        float shadowGate = 1.0 - smoothstep(0.0, 0.6, luma);
         
         // Apply Hue, Saturation, and Shadow-Gate
         vec3 gradedHalo = hueShift(combinedHalo, halationHue * 0.5);
@@ -553,14 +544,9 @@ precision highp float;
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
-        // Phase 14: Relaxed Luminance Protection
-        // Shifted higher (0.6-0.95) and reduced effect (0.4) to allow for 
-        // aggressive bleeds over bright stone while protecting pure whites.
+        // Phase 15: Volumetric Additive Blend (Rich Tone Map)
+        // No more manual luminance protection; the Shadow-Gate now handles highlight purity.
         vec3 result = base + halation;
-        float groundProtection = smoothstep(0.6, 0.95, luma);
-        result = mix(result, base, groundProtection * 0.4);
-        
-        // Final Reinhard (Stabilized for rich shadows)
         vec3 baseWithHalation = result / (1.0 + result * 0.08);
         
         // 2. Calculate image with FULL glow (Screen/SoftLight/Additive bloom over baseWithHalation)
