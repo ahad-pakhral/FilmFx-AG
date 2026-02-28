@@ -36,9 +36,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.border
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -48,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -866,6 +870,13 @@ fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorV
     val hapticFeedback = LocalHapticFeedback.current
     var isDraggingThis by remember { mutableStateOf(false) }
     var lastCenteredState by remember { mutableStateOf(false) }
+    var lastTapTime by remember { mutableStateOf(0L) }
+    
+    // For relative movement & zoomed pin
+    var dragTouchPos by remember { mutableStateOf(Offset.Zero) }
+    
+    val currentHue by rememberUpdatedState(hue)
+    val currentSat by rememberUpdatedState(saturation)
     
     val alpha by animateFloatAsState(
         targetValue = if (uiState.isSliderDragging && !isDraggingThis) 0.1f else 1f,
@@ -876,52 +887,135 @@ fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorV
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.graphicsLayer(alpha = alpha)
     ) {
-        Box(
-            modifier = Modifier.size(120.dp).clip(CircleShape).background(brush = Brush.sweepGradient(colors = listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red))).background(Color.Black.copy(alpha = 0.5f))
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            do {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull() ?: break
+        Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium)
+        // HSL Readout (Now above the disk)
+        Text(
+            text = "H: ${hue.toInt()}°  S: ${(saturation * 100).toInt()}%",
+            color = Color.Gray,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        
+        Box(contentAlignment = Alignment.Center) {
+            // Main Joystick Disk
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clip(CircleShape)
+                    .background(brush = Brush.sweepGradient(colors = listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)))
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitFirstDown()
+                                val now = System.currentTimeMillis()
                                 
-                                if (change.pressed && change.position != change.previousPosition) {
-                                    if (!isDraggingThis) {
-                                        isDraggingThis = true
-                                        viewModel.setSliderDragging(true)
-                                    }
-                                    change.consume()
-                                    val localPos = change.position - Offset(60.dp.toPx(), 60.dp.toPx())
-                                    val r = Math.sqrt((localPos.x * localPos.x + localPos.y * localPos.y).toDouble()).toFloat()
-                                    val maxR = 60.dp.toPx()
-                                    var sat = (r / maxR).coerceIn(0f, 1f)
-                                    val isCurrentlyNearCenter = (sat < 0.15f)
-                                    if (isCurrentlyNearCenter) {
-                                        sat = 0f
-                                        if (!lastCenteredState) { hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove); lastCenteredState = true }
-                                    } else { lastCenteredState = false }
-                                    val rawHue = Math.toDegrees(Math.atan2(localPos.y.toDouble(), localPos.x.toDouble())).toFloat()
-                                    val hueNormalized = if (rawHue < 0) rawHue + 360f else rawHue
-                                    onValueChange(hueNormalized, sat)
+                                // Double Tap Reset Detection
+                                if (now - lastTapTime < 300) {
+                                    onValueChange(0f, 0f)
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    lastTapTime = 0L 
+                                    // Consume the down so we don't start a drag
+                                    down.consume()
+                                    continue
                                 }
-                            } while (event.changes.any { it.pressed })
-                            
-                            if (isDraggingThis) {
+                                lastTapTime = now
+                                
+                                isDraggingThis = true
+                                viewModel.setSliderDragging(true)
+                                dragTouchPos = down.position
+                                
+                                // Store current "virtual" handle position in pixels relative to center
+                                // using updatedState to catch the EXACT current values at moment of touch
+                                val maxR = 60.dp.toPx()
+                                var virtualHandleX = Math.cos(Math.toRadians(currentHue.toDouble())).toFloat() * currentSat * maxR
+                                var virtualHandleY = Math.sin(Math.toRadians(currentHue.toDouble())).toFloat() * currentSat * maxR
+
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    
+                                    if (change.pressed) {
+                                        val delta = change.position - change.previousPosition
+                                        if (delta != Offset.Zero) {
+                                            change.consume()
+                                            dragTouchPos = change.position
+
+                                            // Apply 40% speed reduction (0.6 sensitivity)
+                                            val sensitivity = 0.6f
+                                            virtualHandleX += delta.x * sensitivity
+                                            virtualHandleY += delta.y * sensitivity
+
+                                            val r = Math.sqrt((virtualHandleX * virtualHandleX + virtualHandleY * virtualHandleY).toDouble()).toFloat()
+                                            var sat = (r / maxR).coerceIn(0f, 1f)
+                                            
+                                            // Snap to center
+                                            val isCurrentlyNearCenter = (sat < 0.10f)
+                                            if (isCurrentlyNearCenter) {
+                                                sat = 0f
+                                                if (!lastCenteredState) { 
+                                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    lastCenteredState = true 
+                                                }
+                                            } else { 
+                                                lastCenteredState = false 
+                                            }
+
+                                            val rawHue = Math.toDegrees(Math.atan2(virtualHandleY.toDouble(), virtualHandleX.toDouble())).toFloat()
+                                            val hueNormalized = if (rawHue < 0) rawHue + 360f else rawHue
+                                            
+                                            onValueChange(hueNormalized, sat)
+                                        }
+                                    }
+                                } while (event.changes.any { it.pressed })
+                                
                                 isDraggingThis = false
                                 viewModel.setSliderDragging(false)
                                 viewModel.commitState()
                             }
                         }
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            val handleX = Math.cos(Math.toRadians(hue.toDouble())).toFloat() * saturation * 45.dp.value
-            val handleY = Math.sin(Math.toRadians(hue.toDouble())).toFloat() * saturation * 45.dp.value
-            Box(modifier = Modifier.offset(x = handleX.dp, y = handleY.dp).size(20.dp).clip(CircleShape).background(Color.White))
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                // Handle Reticle (Circle with center dot)
+                val handleX = Math.cos(Math.toRadians(hue.toDouble())).toFloat() * saturation * 45.dp.value
+                val handleY = Math.sin(Math.toRadians(hue.toDouble())).toFloat() * saturation * 45.dp.value
+                Box(
+                    modifier = Modifier
+                        .offset(x = handleX.dp, y = handleY.dp)
+                        .size(24.dp)
+                        // Vibrant Glass Effect Internals
+                        .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                        .drawWithContent {
+                            // Brightening fill (More intense for "Vibrant" look)
+                            drawCircle(
+                                color = Color.White.copy(alpha = 0.35f),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.Overlay
+                            )
+                            // Luminous highlights
+                            drawCircle(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(Color.White.copy(alpha = 0.6f), Color.Transparent),
+                                    center = Offset(size.width * 0.3f, size.height * 0.3f),
+                                    radius = size.width * 0.6f
+                                ),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.Screen
+                            )
+                            drawContent()
+                        }
+                        .border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Precision center dot (White)
+                    Box(
+                        modifier = Modifier
+                            .size(2.dp)
+                            .background(Color.White, CircleShape)
+                    )
+                }
+            }
         }
-        Text(label, color = Color.Gray, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
     }
 }
 
