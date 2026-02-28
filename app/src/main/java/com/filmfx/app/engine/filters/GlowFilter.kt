@@ -319,9 +319,14 @@ precision highp float;
         
         vec3 color = max(max(c0, c1), max(c2, c3));
         float luminance = luma(color);
-        // Wider smoothstep for more sensitive extraction (0.1 padding)
-        float extract = smoothstep(threshold - 0.1, threshold + 0.1, luminance);
-        gl_FragColor = vec4(extract, extract * 0.22, extract * 0.04, 1.0);
+        
+        // Solid Extraction ("Energy Density"):
+        // Captures the whole light source to act as an energy reservoir
+        // that allows the blur to bleed significantly further out.
+        float mask = smoothstep(threshold - 0.1, threshold + 0.1, luminance);
+        
+        // Apply reddish-orange tint directly here
+        gl_FragColor = vec4(mask * 1.5, mask * 0.2, mask * 0.02, 1.0);
     }
     """.trimIndent()
 ) {
@@ -533,12 +538,13 @@ precision highp float;
         float shadowProtection = smoothstep(0.0, glowBlackPoint + 0.001, luma);
         bloom *= shadowProtection;
         
-        vec3 totalGlow = halation + bloom;
+        // 1. Wrap-Around Blending (Additive + Reinhard Tone Map)
+        // This forces light to "wrap" over dark objects (occlusion overwrite)
+        // while preventing digital white-clipping.
+        vec3 baseWithHalation = base + halation;
+        baseWithHalation = baseWithHalation / (1.0 + baseWithHalation * 0.2);
         
-        // 1. Calculate base image with ONLY halation and base (Screen Blend)
-        vec3 baseWithHalation = 1.0 - (1.0 - base) * (1.0 - halation);
-        
-        // 2. Calculate image with FULL glow (Screen Blend bloom over baseWithHalation)
+        // 2. Calculate image with FULL glow (Screen/SoftLight/Additive bloom over baseWithHalation)
         vec3 screenFull = 1.0 - (1.0 - baseWithHalation) * (1.0 - bloom);
         vec3 additiveFull = baseWithHalation + bloom;
         vec3 softLightFull = (1.0 - 2.0 * bloom) * (baseWithHalation * baseWithHalation) + (2.0 * bloom * baseWithHalation);
@@ -548,7 +554,7 @@ precision highp float;
         // 3. Opacity drives the blend between the Halation-only image and the Full-Glow image
         vec3 finalColor = mix(baseWithHalation, fullGlowImage, bloomOpacity);
         
-        // Highlight Protection (Core Detail) applies over the final result
+        // Final Highlight Protection
         float protection = pow(luma, 3.0) * glowHighlightProtection;
         finalColor = mix(finalColor, base, clamp(protection, 0.0, 1.0));
 
