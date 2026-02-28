@@ -528,10 +528,6 @@ fun EditorScreen(
                                     }
                                     ToolType.SPLIT_TONING -> {
                                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text("Shadow H/S", color = Color.Cyan, style = MaterialTheme.typography.labelSmall)
-                                                Text("Highlight H/S", color = Color.Yellow, style = MaterialTheme.typography.labelSmall)
-                                            }
                                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                                                 JoystickPad(label = "Shadows", hue = effectParams.splitToneShadowHue, saturation = effectParams.splitToneShadowSat) { h, s -> 
                                                     viewModel.updateParams { it.copy(splitToneShadowHue = h, splitToneShadowSat = s) }
@@ -879,7 +875,7 @@ fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorV
     val currentSat by rememberUpdatedState(saturation)
     
     val alpha by animateFloatAsState(
-        targetValue = if (uiState.isSliderDragging && !isDraggingThis) 0.1f else 1f,
+        targetValue = if (uiState.isSliderDragging && !isDraggingThis) 0.0f else 1f,
         label = "JoystickAlpha"
     )
     
@@ -888,12 +884,19 @@ fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorV
         modifier = Modifier.graphicsLayer(alpha = alpha)
     ) {
         Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium)
-        // HSL Readout (Now above the disk)
+        // HSL Readout (White text with thick black visibility outline)
         Text(
             text = "H: ${hue.toInt()}°  S: ${(saturation * 100).toInt()}%",
-            color = Color.Gray,
-            style = MaterialTheme.typography.labelSmall,
-            fontSize = 10.sp
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = if (isDraggingThis) FontWeight.Bold else FontWeight.Medium,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black,
+                    offset = Offset(0f, 0f),
+                    blurRadius = if (isDraggingThis) 10f else 6f
+                )
+            ),
+            fontSize = 11.sp
         )
         Spacer(modifier = Modifier.height(8.dp))
         
@@ -1024,7 +1027,7 @@ fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float
     val uiState by viewModel.uiState.collectAsState()
     var isDraggingThis by remember { mutableStateOf(false) }
     
-    val alpha by animateFloatAsState(targetValue = if (uiState.isSliderDragging && !isDraggingThis) 0.1f else 1f)
+    val alpha by animateFloatAsState(targetValue = if (uiState.isSliderDragging && !isDraggingThis) 0.0f else 1f)
     Column(
         modifier = Modifier.fillMaxWidth().graphicsLayer(alpha = alpha).padding(vertical = 4.dp)
     ) {
@@ -1034,7 +1037,14 @@ fun SliderRow(label: String, value: Float, range: ClosedFloatingPointRange<Float
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(label, color = Color.White, style = MaterialTheme.typography.labelSmall)
-            Text(String.format("%.2f", value), color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+            Text(String.format("%.2f", value), color = Color.White, style = MaterialTheme.typography.labelSmall.copy(
+                fontWeight = if (isDraggingThis) FontWeight.Bold else FontWeight.Medium,
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = Color.Black,
+                    offset = Offset(0f, 0f),
+                    blurRadius = if (isDraggingThis) 10f else 6f
+                )
+            ))
         }
         PrecisionSlider(
             value = value,
