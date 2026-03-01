@@ -8,10 +8,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.filmfx.app.utils.HapticManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -30,7 +30,9 @@ fun PrecisionSlider(
     onValueChangeFinished: (() -> Unit)? = null,
     onDraggingChanged: (Boolean) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
+    val haptic = remember { HapticManager(context, hapticFeedback) }
     val density = LocalDensity.current.density
     val touchSlop = LocalViewConfiguration.current.touchSlop
     
@@ -110,7 +112,7 @@ fun PrecisionSlider(
                             
                             val finalValueToEmit = if (isNearDefault) {
                                 if (abs(lastHapticValue - defaultValue) > 0.001f) {
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove) // Tick
+                                    haptic.tick() // Tick
                                     lastHapticValue = defaultValue
                                 }
                                 defaultValue
@@ -135,7 +137,7 @@ fun PrecisionSlider(
                         if (upTime - downTime < 300) {
                             if (downTime - lastTapTime < 300) {
                                 // Double tap confirmed
-                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                haptic.heavyTick()
                                 currentOnValueChange(defaultValue)
                                 currentOnValueChangeFinished?.invoke()
                                 lastTapTime = 0L

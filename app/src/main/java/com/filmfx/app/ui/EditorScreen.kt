@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -46,7 +47,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import com.filmfx.app.utils.HapticManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
@@ -83,7 +84,8 @@ fun EditorScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-    val haptic = LocalHapticFeedback.current
+    val hapticFeedback = LocalHapticFeedback.current
+    val haptic = remember { HapticManager(context, hapticFeedback) }
     val view = LocalView.current
     
     // Auto-load project or URI when opened
@@ -99,13 +101,16 @@ fun EditorScreen(
     val uiState by viewModel.uiState.collectAsState()
     val presets by viewModel.presets.collectAsState()
     val currentProject by viewModel.currentProject.collectAsState()
+    
+    val toolScroll = rememberScrollState()
+    val ribbonScroll = rememberScrollState()
 
     var loadedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var selectedPresets by remember { mutableStateOf(setOf<Long>()) }
 
     // Proper Back Navigation
     BackHandler {
-        viewModel.commitState()
+        viewModel.forceSave()
         viewModel.clearCurrentProject()
         onNavigateBack()
     }
@@ -273,7 +278,7 @@ fun EditorScreen(
                                             if (!isMultiTouch && !isMoved && lastEvent.changes.any { it.pressed }) {
                                                 // Real hold
                                                 viewModel.updateUiState { it.copy(showBefore = true) }
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                haptic.heavyTick()
                                                 
                                                 do {
                                                     lastEvent = awaitPointerEvent()
@@ -335,7 +340,7 @@ fun EditorScreen(
                                             for (snap in snapPoints) {
                                                 if (Math.abs(normalizedRot - snap) < threshold) {
                                                     if (current.transformRotation != snap) {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        haptic.heavyTick()
                                                     }
                                                     newRotation = snap
                                                     snapped = true
@@ -411,7 +416,7 @@ fun EditorScreen(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { 
-                        viewModel.commitState()
+                        viewModel.forceSave()
                         viewModel.clearCurrentProject()
                         onNavigateBack() 
                     }) {
@@ -482,7 +487,6 @@ fun EditorScreen(
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                             tonalElevation = 8.dp
                         ) {
-                            val toolScroll = rememberScrollState()
                             Column(
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp, vertical = 20.dp)
@@ -567,6 +571,13 @@ fun EditorScreen(
                                             SliderRow(label = "Intensity", value = effectParams.vignetteIntensity, range = -1f..1f, defaultValue = 0f) { v -> viewModel.updateParams { it.copy(vignetteIntensity = v) } }
                                             SliderRow(label = "Radius", value = effectParams.vignetteRadius, range = 0f..1f, defaultValue = 0.8f) { v -> viewModel.updateParams { it.copy(vignetteRadius = v) } }
                                             SliderRow(label = "Feather", value = effectParams.vignetteFeather, range = 0f..1f, defaultValue = 0.5f) { v -> viewModel.updateParams { it.copy(vignetteFeather = v) } }
+                                            
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text("Lens Math", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
+                                            SliderRow(label = "Roundness", value = effectParams.vignetteRoundness, range = 0f..1f, defaultValue = 1.0f) { v -> viewModel.updateParams { it.copy(vignetteRoundness = v) } }
+                                            SliderRow(label = "Slope", value = effectParams.vignetteSlope, range = 1f..5f, defaultValue = 1.5f) { v -> viewModel.updateParams { it.copy(vignetteSlope = v) } }
+                                            SliderRow(label = "Center X", value = effectParams.vignetteCenterX, range = 0f..1f, defaultValue = 0.5f) { v -> viewModel.updateParams { it.copy(vignetteCenterX = v) } }
+                                            SliderRow(label = "Center Y", value = effectParams.vignetteCenterY, range = 0f..1f, defaultValue = 0.5f) { v -> viewModel.updateParams { it.copy(vignetteCenterY = v) } }
                                         }
                                     }
                                     ToolType.DETAIL -> {
@@ -679,7 +690,6 @@ fun EditorScreen(
                             color = Color.Black.copy(alpha = 0.9f),
                             tonalElevation = 12.dp
                         ) {
-                            val ribbonScroll = rememberScrollState()
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -688,18 +698,6 @@ fun EditorScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                ToolNavItem(
-                                    "COLOR", 
-                                    Icons.Default.Palette, 
-                                    uiState.activeTool == ToolType.COLOR,
-                                    viewModel.isEffectModified(ToolType.COLOR, effectParams),
-                                    effectParams.isColorEnabled,
-                                    onClick = {
-                                        if (uiState.activeTool == ToolType.COLOR) viewModel.updateUiState { it.copy(isDrawerExpanded = !it.isDrawerExpanded) } 
-                                        else { viewModel.setActiveTool(ToolType.COLOR); viewModel.updateUiState { it.copy(isDrawerExpanded = true) } }
-                                    },
-                                    onLongClick = { viewModel.toggleEffect(ToolType.COLOR) }
-                                )
                                 ToolNavItem(
                                     "LIGHT", 
                                     Icons.Default.Brightness6, 
@@ -711,6 +709,18 @@ fun EditorScreen(
                                         else { viewModel.setActiveTool(ToolType.LIGHT); viewModel.updateUiState { it.copy(isDrawerExpanded = true) } }
                                     },
                                     onLongClick = { viewModel.toggleEffect(ToolType.LIGHT) }
+                                )
+                                ToolNavItem(
+                                    "COLOR", 
+                                    Icons.Default.Palette, 
+                                    uiState.activeTool == ToolType.COLOR,
+                                    viewModel.isEffectModified(ToolType.COLOR, effectParams),
+                                    effectParams.isColorEnabled,
+                                    onClick = {
+                                        if (uiState.activeTool == ToolType.COLOR) viewModel.updateUiState { it.copy(isDrawerExpanded = !it.isDrawerExpanded) } 
+                                        else { viewModel.setActiveTool(ToolType.COLOR); viewModel.updateUiState { it.copy(isDrawerExpanded = true) } }
+                                    },
+                                    onLongClick = { viewModel.toggleEffect(ToolType.COLOR) }
                                 )
                                 ToolNavItem(
                                     "ATMOSPHERE", 
@@ -808,7 +818,14 @@ fun EditorScreen(
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 fun ToolNavItem(name: String, icon: ImageVector, isSelected: Boolean, isModified: Boolean, isEnabled: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
-    val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val hapticFeedback = LocalHapticFeedback.current
+    val haptic = remember { HapticManager(context, hapticFeedback) }
+
+    // Priority: Disabled state (dull) takes precedence over Selected state (bright)
+    val iconColor = if (!isEnabled) Color.DarkGray.copy(alpha = 0.4f) else if (isSelected) Color.White else Color.Gray
+    val textColor = if (!isEnabled) Color.Gray.copy(alpha = 0.4f) else if (isSelected) Color.White else Color.Gray
+
     Column(
         modifier = Modifier
             .width(72.dp)
@@ -816,7 +833,7 @@ fun ToolNavItem(name: String, icon: ImageVector, isSelected: Boolean, isModified
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptic.heavyTick()
                     onLongClick()
                 }
             )
@@ -828,10 +845,10 @@ fun ToolNavItem(name: String, icon: ImageVector, isSelected: Boolean, isModified
             Icon(
                 imageVector = icon, 
                 contentDescription = name, 
-                tint = if (isSelected) Color.White else if (isEnabled) Color.Gray else Color.DarkGray.copy(alpha = 0.5f), 
+                tint = iconColor, 
                 modifier = Modifier.size(24.dp)
             )
-            if (isModified) {
+            if (isModified && isEnabled) { // Only show mod dot if enabled
                 Box(
                     modifier = Modifier
                         .size(6.dp)
@@ -844,26 +861,46 @@ fun ToolNavItem(name: String, icon: ImageVector, isSelected: Boolean, isModified
         Text(
             text = name, 
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), 
-            color = if (isSelected) Color.White else if (isEnabled) Color.Gray else Color.Gray.copy(alpha = 0.5f), 
+            color = textColor, 
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, 
             maxLines = 1
         )
+        
+        // Active Indicator (Dash)
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .width(10.dp)
+                    .height(2.dp)
+                    .background(
+                        color = if (isEnabled) Color.White else Color.Gray.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(1.dp)
+                    )
+            )
+        } else {
+            Spacer(modifier = Modifier.height(6.dp))
+        }
     }
 }
 
 @Composable
 fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
+    val haptic = remember { HapticManager(context, hapticFeedback) }
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(text = label, color = Color.White, style = MaterialTheme.typography.labelMedium)
-        Switch(checked = checked, onCheckedChange = { hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove); onCheckedChange(it) }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color.Cyan))
+        Switch(checked = checked, onCheckedChange = { haptic.tick(); onCheckedChange(it) }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = Color.Cyan))
     }
 }
 
 @Composable
 fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorViewModel = viewModel(), onValueChange: (Float, Float) -> Unit) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
+    val haptic = remember { HapticManager(context, hapticFeedback) }
     var isDraggingThis by remember { mutableStateOf(false) }
     var lastCenteredState by remember { mutableStateOf(false) }
     var lastTapTime by remember { mutableStateOf(0L) }
@@ -917,7 +954,7 @@ fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorV
                                 // Double Tap Reset Detection
                                 if (now - lastTapTime < 300) {
                                     onValueChange(0f, 0f)
-                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    haptic.heavyTick()
                                     lastTapTime = 0L 
                                     // Consume the down so we don't start a drag
                                     down.consume()
@@ -958,7 +995,7 @@ fun JoystickPad(label: String, hue: Float, saturation: Float, viewModel: EditorV
                                             if (isCurrentlyNearCenter) {
                                                 sat = 0f
                                                 if (!lastCenteredState) { 
-                                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    haptic.tick()
                                                     lastCenteredState = true 
                                                 }
                                             } else { 

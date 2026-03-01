@@ -8,16 +8,22 @@ import com.filmfx.app.data.Project
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 class ProjectsViewModel(application: Application) : AndroidViewModel(application) {
     private val dao = AppDatabase.getDatabase(application).projectDao()
 
-    val projects: StateFlow<List<Project>> = dao.getAllProjects().stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyList()
-    )
+    private val _isLoading = kotlinx.coroutines.flow.MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading
+
+    val projects: StateFlow<List<Project>> = dao.getAllProjects()
+        .onEach { _isLoading.value = false }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     fun deleteProject(project: Project) {
         viewModelScope.launch {

@@ -12,6 +12,7 @@ data class Project(
     val originalUri: String,
     val parametersJson: String,
     val previewUri: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
     val lastModified: Long = System.currentTimeMillis()
 )
 
@@ -65,6 +66,10 @@ data class EffectParameters(
     val vignetteIntensity: Float = 0f,
     val vignetteRadius: Float = 0.8f,
     val vignetteFeather: Float = 0.5f,
+    val vignetteCenterX: Float = 0.5f,
+    val vignetteCenterY: Float = 0.5f,
+    val vignetteRoundness: Float = 1.0f,
+    val vignetteSlope: Float = 1.5f,
 
     // Color (Phase 6.1)
     val colorTemperature: Float = 6000f, // Kelvin: 2000 to 12000

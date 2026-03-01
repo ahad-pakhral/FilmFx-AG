@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.filmfx.app.data.EffectParameters
 import com.filmfx.app.data.Project
 import com.filmfx.app.data.AppDatabase
@@ -28,6 +30,9 @@ import android.content.Context
 import android.widget.Toast
 import androidx.work.*
 import com.filmfx.app.engine.export.ExportWorker
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 
 data class EditorUiState(
     val colorVisible: Boolean = true,
@@ -111,10 +116,13 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             resetAll() // Clear previous edits for the new image
         }
         if (_currentProject.value == null) {
+            val now = System.currentTimeMillis()
             val newProj = Project(
                 name = "Untitled Project",
                 originalUri = uri,
-                parametersJson = Json.encodeToString(_effectParams.value)
+                parametersJson = Json.encodeToString(_effectParams.value),
+                createdAt = now,
+                lastModified = now
             )
             viewModelScope.launch {
                 val newId = dao.insertProject(newProj)
@@ -132,6 +140,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateParams(updater: (EffectParameters) -> EffectParameters) {
         _effectParams.update(updater)
+        scheduleSave()
     }
 
     fun commitState() {
@@ -257,20 +266,96 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /**
+     * Immediately saves current project state and cancels any pending scheduled save.
+     */
+    fun forceSave() {
+        saveJob?.cancel()
+        _currentProject.value?.let { proj ->
+            viewModelScope.launch {
+                val params = _effectParams.value
+                val updatedProj = proj.copy(
+                    parametersJson = Json.encodeToString(params),
+                    lastModified = System.currentTimeMillis()
+                )
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dao.updateProject(updatedProj)
+                    _currentProject.value = updatedProj
+                    generatePreview(updatedProj, params)
+                }
+            }
+        }
+    }
+
     private fun scheduleSave() {
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             delay(1000) // Debounce saves
             _currentProject.value?.let { proj ->
+                val params = _effectParams.value
                 val updatedProj = proj.copy(
-                    parametersJson = Json.encodeToString(_effectParams.value),
+                    parametersJson = Json.encodeToString(params),
                     lastModified = System.currentTimeMillis()
                 )
                 dao.updateProject(updatedProj)
                 _currentProject.value = updatedProj
                 
-                // Regenerate thumbnail on Save if needed
-                // generateThumbnail(updatedProj)
+                // Regenerate thumbnail on Save
+                viewModelScope.launch {
+                    generatePreview(updatedProj, params)
+                }
+            }
+        }
+    }
+
+    private suspend fun generatePreview(project: Project, params: EffectParameters) {
+        withContext(Dispatchers.IO) {
+            try {
+                val context = getApplication<Application>()
+                val uri = Uri.parse(project.originalUri)
+                
+                // 1. Load downsampled version of original
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = false
+                    inSampleSize = 4 // Downsample for speed and memory
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                }
+                
+                val sourceBmp = context.contentResolver.openInputStream(uri)?.use {
+                    BitmapFactory.decodeStream(it, null, options)
+                } ?: return@withContext
+
+                // 2. Apply filters at preview resolution - forceExportMode=true to ignore transforms (no black borders)
+                val filterGroup = com.filmfx.app.engine.EngineContext.buildFilterGroup(
+                    params, 
+                    sourceBmp.width.toFloat(), 
+                    sourceBmp.height.toFloat(),
+                    forceExportMode = true
+                )
+                val gpuImage = jp.co.cyberagent.android.gpuimage.GPUImage(context)
+                gpuImage.setFilter(filterGroup)
+                
+                val processedBmp = gpuImage.getBitmapWithFilterApplied(sourceBmp)
+                sourceBmp.recycle()
+                
+                if (processedBmp != null) {
+                    // 3. Save to internal storage
+                    val previewFolder = java.io.File(context.filesDir, "previews")
+                    if (!previewFolder.exists()) previewFolder.mkdirs()
+                    
+                    val previewFile = java.io.File(previewFolder, "preview_${project.id}.jpg")
+                    java.io.FileOutputStream(previewFile).use { out ->
+                        processedBmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                    }
+                    processedBmp.recycle()
+                    
+                    // 4. Update Database
+                    val finalProj = project.copy(previewUri = previewFile.absolutePath)
+                    dao.updateProject(finalProj)
+                    _currentProject.value = finalProj
+                }
+            } catch (e: Exception) {
+                Log.e("FilmFX", "Failed to generate preview", e)
             }
         }
     }
@@ -303,7 +388,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             ToolType.SPLIT_TONING -> !isNear(p.splitToneShadowHue, d.splitToneShadowHue) || !isNear(p.splitToneShadowSat, d.splitToneShadowSat) || !isNear(p.splitToneHighlightHue, d.splitToneHighlightHue) || !isNear(p.splitToneHighlightSat, d.splitToneHighlightSat) || !isNear(p.splitToneBalance, d.splitToneBalance) || !isNear(p.splitToneImpact, d.splitToneImpact)
             ToolType.HALATION -> !isNear(p.halationIntensity, d.halationIntensity) || !isNear(p.halationThreshold, d.halationThreshold) || !isNear(p.halationSpread, d.halationSpread) || !isNear(p.halationHue, d.halationHue) || !isNear(p.halationSaturation, d.halationSaturation)
             ToolType.BLOOM -> !isNear(p.bloomIntensity, d.bloomIntensity) || !isNear(p.bloomThreshold, d.bloomThreshold) || !isNear(p.bloomSpread, d.bloomSpread) || !isNear(p.bloomOpacity, d.bloomOpacity) || !isNear(p.bloomBlackPoint, d.bloomBlackPoint) || !isNear(p.bloomHighlightProtection, d.bloomHighlightProtection)
-            ToolType.VIGNETTE -> !isNear(p.vignetteIntensity, d.vignetteIntensity) || !isNear(p.vignetteRadius, d.vignetteRadius) || !isNear(p.vignetteFeather, d.vignetteFeather)
+            ToolType.VIGNETTE -> !isNear(p.vignetteIntensity, d.vignetteIntensity) || !isNear(p.vignetteRadius, d.vignetteRadius) || !isNear(p.vignetteFeather, d.vignetteFeather) || !isNear(p.vignetteCenterX, d.vignetteCenterX) || !isNear(p.vignetteCenterY, d.vignetteCenterY) || !isNear(p.vignetteRoundness, d.vignetteRoundness) || !isNear(p.vignetteSlope, d.vignetteSlope)
             ToolType.DETAIL -> !isNear(p.grainIntensity, d.grainIntensity) || !isNear(p.grainSize, d.grainSize) || !isNear(p.grainSoftness, d.grainSoftness) || !isNear(p.grainClumpiness, d.grainClumpiness) || !isNear(p.grainShadowCoverage, d.grainShadowCoverage) || !isNear(p.grainHighlightFade, d.grainHighlightFade) || !isNear(p.grainChromaIntensity, d.grainChromaIntensity)
             else -> false
         }
@@ -529,6 +614,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                             _uiState.update { it.copy(exportProgress = progress, exportError = null) }
                         }
                         WorkInfo.State.SUCCEEDED -> {
+                            Toast.makeText(getApplication(), "Export complete!", Toast.LENGTH_SHORT).show()
                             _uiState.update { it.copy(exportProgress = 100, exportError = null) }
                             delay(2000)
                             _uiState.update { it.copy(exportProgress = null) }

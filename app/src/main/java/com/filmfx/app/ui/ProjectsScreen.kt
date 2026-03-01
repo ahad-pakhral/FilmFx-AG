@@ -43,6 +43,7 @@ fun ProjectsScreen(
     viewModel: ProjectsViewModel = viewModel()
 ) {
     val projects by viewModel.projects.collectAsState()
+    val isLoadingData by viewModel.isLoading.collectAsState()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -111,7 +112,7 @@ fun ProjectsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (projects.isEmpty()) {
+            if (projects.isEmpty() && !isLoadingData) {
                 // Empty State
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -252,10 +253,16 @@ fun ProjectCard(project: Project, isSelected: Boolean, isSelectionMode: Boolean,
                     .padding(12.dp)
             ) {
                 Text(
-                    text = project.name,
+                    text = "Created: ${com.filmfx.app.utils.DateUtils.formatDate(project.createdAt)}",
+                    color = Color.Gray,
+                    fontSize = 10.sp,
+                    maxLines = 1
+                )
+                Text(
+                    text = "Modified: ${com.filmfx.app.utils.DateUtils.formatDate(project.lastModified)}",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )

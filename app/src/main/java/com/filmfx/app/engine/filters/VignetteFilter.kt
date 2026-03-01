@@ -1,10 +1,12 @@
 package com.filmfx.app.engine.filters
 
-import jp.co.cyberagent.android.gpuimage.filter.GPUImageFilter
+import android.graphics.PointF
 import android.opengl.GLES20
+import jp.co.cyberagent.android.gpuimage.filter.GPUImageFilter
 
 /**
- * VignetteFilter applies a radial quadratic falloff to darken the corners of the image.
+ * Advanced VignetteFilter for cinematic film emulation.
+ * Simulates true optical light falloff with controls for anamorphic squeeze and center shifting.
  */
 class VignetteFilter : GPUImageFilter(
     NO_FILTER_VERTEX_SHADER,
@@ -13,26 +15,54 @@ class VignetteFilter : GPUImageFilter(
     private var intensityLocation: Int = -1
     private var radiusLocation: Int = -1
     private var softnessLocation: Int = -1
+    private var centerLocation: Int = -1
+    private var roundnessLocation: Int = -1
+    private var slopeLocation: Int = -1
     private var aspectRatioLocation: Int = -1
 
-    var intensity: Float = 0.0f
+    // 0.0 to 1.0 (How dark the corners get. 0.0 = no effect)
+    var intensity: Float = 0.5f
         set(value) {
             field = value
             setFloat(intensityLocation, value)
         }
 
-    var radius: Float = 0.8f
+    // 0.0 to 1.0 (Size of the protected center area)
+    var radius: Float = 0.75f
         set(value) {
             field = value
             setFloat(radiusLocation, value)
         }
 
+    // 0.0 to 1.0 (How gradual the gradient is)
     var softness: Float = 0.5f
         set(value) {
             field = value
             setFloat(softnessLocation, value)
         }
 
+    // X, Y coordinates for the center of the vignette (Default is dead center: 0.5, 0.5)
+    var center: PointF = PointF(0.5f, 0.5f)
+        set(value) {
+            field = value
+            setPoint(centerLocation, value)
+        }
+
+    // 0.0 (Oval/Screen Shape) to 1.0 (Perfect Circle/Spherical Lens)
+    var roundness: Float = 1.0f
+        set(value) {
+            field = value
+            setFloat(roundnessLocation, value)
+        }
+
+    // Gamma curve of the falloff. (1.0 = linear. 1.5+ = cinematic exponential curve)
+    var slope: Float = 1.5f
+        set(value) {
+            field = value
+            setFloat(slopeLocation, value)
+        }
+
+    // Image Width / Image Height
     var aspectRatio: Float = 1.0f
         set(value) {
             field = value
@@ -44,14 +74,21 @@ class VignetteFilter : GPUImageFilter(
         intensityLocation = GLES20.glGetUniformLocation(program, "intensity")
         radiusLocation = GLES20.glGetUniformLocation(program, "radius")
         softnessLocation = GLES20.glGetUniformLocation(program, "softness")
+        centerLocation = GLES20.glGetUniformLocation(program, "center")
+        roundnessLocation = GLES20.glGetUniformLocation(program, "roundness")
+        slopeLocation = GLES20.glGetUniformLocation(program, "slope")
         aspectRatioLocation = GLES20.glGetUniformLocation(program, "aspectRatio")
     }
 
     override fun onInitialized() {
         super.onInitialized()
+        // Push default values to the shader once it's compiled
         intensity = intensity
         radius = radius
         softness = softness
+        center = center
+        roundness = roundness
+        slope = slope
         aspectRatio = aspectRatio
     }
 
@@ -61,34 +98,39 @@ class VignetteFilter : GPUImageFilter(
             varying highp vec2 textureCoordinate;
             uniform sampler2D inputImageTexture;
             
-            uniform float intensity; // 0.0 to 1.0 (or negative for white)
-            uniform float radius;    // Midpoint
-            uniform float softness;  // Feathering
-            uniform float aspectRatio; // For elliptical scaling
+            uniform float intensity;
+            uniform float radius;
+            uniform float softness;
+            uniform vec2 center;
+            uniform float roundness;
+            uniform float slope;
+            uniform float aspectRatio;
             
             void main() {
                 vec4 color = texture2D(inputImageTexture, textureCoordinate);
                 
-                // 1. Calculate the distance from center
-                vec2 center = vec2(0.5, 0.5);
+                // 1. Calculate distance from the user-defined center
                 vec2 coord = textureCoordinate - center;
                 
-                // Scale the y-coordinate by aspectRatio to make the radial gradient elliptical
-                // (This perfectly matches the underlying image shape regardless of Viewport stretching)
-                coord.y *= aspectRatio;
+                // 2. Apply Roundness / Aspect Ratio correction
+                // Scales the X coordinate by the aspect ratio to create a perfect physical circle.
+                // 'mix' allows blending between an anamorphic oval and a spherical circle.
+                vec2 aspectScale = vec2(aspectRatio, 1.0); 
+                vec2 shapedCoord = mix(coord, coord * aspectScale, roundness);
                 
-                float dist = length(coord);
+                float dist = length(shapedCoord);
                 
-                // 2. Apply the vignette curve
-                // smoothstep creates the 'feathering' between the radius and the edge
+                // 3. Base gradient using smoothstep
                 float vignette = smoothstep(radius, radius - softness, dist);
                 
-                // 3. Cinematic Blending
-                // Instead of just multiplying by black, we 'darken' the image 
-                // This preserves some shadow detail in the corners.
-                vec3 finalColor = mix(color.rgb * (1.0 - intensity), color.rgb, vignette);
+                // 4. Falloff Slope (Gamma correction for organic roll-off)
+                vignette = pow(vignette, slope);
                 
-                gl_FragColor = vec4(finalColor, color.a);
+                // 5. Exposure Reduction Blending
+                // Simulates physical light loss rather than mixing flat black over the image
+                float exposureMultiplier = mix(1.0, vignette, intensity);
+                
+                gl_FragColor = vec4(color.rgb * exposureMultiplier, color.a);
             }
         """
     }

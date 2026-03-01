@@ -9,6 +9,7 @@ import android.opengl.GLES30
 import android.util.Log
 import com.filmfx.app.data.EffectParameters
 import com.filmfx.app.engine.filters.*
+import android.graphics.PointF
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageFilterGroup
 
 class EngineContext {
@@ -110,23 +111,6 @@ class EngineContext {
         eglSurface = EGL14.EGL_NO_SURFACE
     }
     
-    object Parity {
-        const val TINT_OFFSET = 0.0f
-        const val SAT_OFFSET = 0.0f
-        const val HALATION_THRESHOLD_OFFSET = 0.0f
-        const val SPREAD_SCALE = 1.0f
-        const val TOE_OFFSET = 0.0f 
-        
-        const val GLOW_INTENSITY_SCALE = 1.0f
-        const val GLOW_BASE_BOOST = 0.0f
-        
-        const val GRAIN_EXPORT_SCALE = 1.0f 
-        const val GRAIN_PREVIEW_SCALE = 1.0f
-        
-        const val GRAIN_SIZE_SCALE = 1.0f
-        const val VIGNETTE_RADIUS_BOOST = 0.0f
-        const val BLUR_SCALE = 1.0f
-    }
 
     companion object {
         fun buildFilterGroup(
@@ -154,8 +138,8 @@ class EngineContext {
                     is FilmPipelineFilter -> {
                         val colorEnabled = params.isColorEnabled
                         filter.temperature = if (colorEnabled) params.colorTemperature else 6000f
-                        filter.tint = if (colorEnabled) params.colorTint + Parity.TINT_OFFSET else 0f
-                        filter.saturation = if (colorEnabled) params.colorSaturation + Parity.SAT_OFFSET else 1f
+                        filter.tint = if (colorEnabled) params.colorTint else 0f
+                        filter.saturation = if (colorEnabled) params.colorSaturation else 1f
                         filter.richness = if (colorEnabled) params.colorRichness else 0f
                         filter.subtractiveSat = if (colorEnabled) params.colorSubtractiveSat else 0f
 
@@ -175,28 +159,23 @@ class EngineContext {
                         filter.exposure = if (lightEnabled) params.toneMapExposure else 0f
                         filter.contrast = if (lightEnabled) params.toneMapContrast else 1f
                         filter.shoulder = if (lightEnabled) params.toneMapShoulder else 0f
-                        filter.toe = if (lightEnabled) params.toneMapToe + Parity.TOE_OFFSET else 0f
+                        filter.toe = if (lightEnabled) params.toneMapToe else 0f
                         filter.highlights = if (lightEnabled) params.toneMapHighlights else 0f
                         filter.shadows = if (lightEnabled) params.toneMapShadows else 0f
                     }
                     is GlowFilter -> {
-                        val glowIntensityScale = Parity.GLOW_INTENSITY_SCALE
-                        val glowBaseBoost = Parity.GLOW_BASE_BOOST
-                        val spreadScale = Parity.SPREAD_SCALE
-                        val halationThresholdOffset = Parity.HALATION_THRESHOLD_OFFSET
-                        
                         val halationEnabled = params.isHalationEnabled
-                        filter.halationIntensity = if (halationEnabled) (params.halationIntensity + glowBaseBoost) * glowIntensityScale else 0f
-                        filter.halationThreshold = params.halationThreshold + halationThresholdOffset
-                        filter.halationSpread = params.halationSpread * spreadScale
+                        filter.halationIntensity = if (halationEnabled) params.halationIntensity else 0f
+                        filter.halationThreshold = params.halationThreshold
+                        filter.halationSpread = params.halationSpread
                         filter.halationHue = params.halationHue
                         filter.halationSaturation = params.halationSaturation
                         filter.showMaskOnly = params.halationShowMask
                         
                         val bloomEnabled = params.isBloomEnabled
-                        filter.bloomIntensity = if (bloomEnabled) (params.bloomIntensity + glowBaseBoost) * glowIntensityScale else 0f
-                        filter.bloomThreshold = params.bloomThreshold + halationThresholdOffset
-                        filter.bloomSpread = params.bloomSpread * spreadScale
+                        filter.bloomIntensity = if (bloomEnabled) params.bloomIntensity else 0f
+                        filter.bloomThreshold = params.bloomThreshold
+                        filter.bloomSpread = params.bloomSpread
                         filter.bloomOpacity = params.bloomOpacity
                         filter.glowBlackPoint = params.bloomBlackPoint
                         filter.glowHighlightProtection = params.bloomHighlightProtection
@@ -204,7 +183,7 @@ class EngineContext {
                     }
                     is FilmBlurFilter -> {
                         val enabled = params.isAtmosphereEnabled
-                        filter.amount = if (enabled) params.blurAmount * Parity.BLUR_SCALE else 0f
+                        filter.amount = if (enabled) params.blurAmount else 0f
                         filter.isTiltShift = params.blurIsTiltShift
                         filter.focus = params.blurTiltShiftFocus
                         if (viewWidth > 0 && viewHeight > 0) filter.aspectRatio = viewWidth / viewHeight
@@ -212,17 +191,19 @@ class EngineContext {
                     is VignetteFilter -> {
                         val enabled = params.isVignetteEnabled
                         filter.intensity = if (enabled) params.vignetteIntensity else 0f
-                        filter.radius = params.vignetteRadius + Parity.VIGNETTE_RADIUS_BOOST
+                        filter.radius = params.vignetteRadius
                         filter.softness = params.vignetteFeather
+                        filter.center = PointF(params.vignetteCenterX, params.vignetteCenterY)
+                        filter.roundness = params.vignetteRoundness
+                        filter.slope = params.vignetteSlope
                         if (viewWidth > 0 && viewHeight > 0) filter.aspectRatio = viewWidth / viewHeight
                     }
                     is GrainFilter -> {
                         val enabled = params.isGrainEnabled
-                        val isExportMode = forceExportMode || viewHeight > 3000f
-                        val grainIntensityScale = if (isExportMode) Parity.GRAIN_EXPORT_SCALE else Parity.GRAIN_PREVIEW_SCALE
+                        val grainIntensityScale = 1.0f
                         
                         filter.intensity = if (enabled) params.grainIntensity * grainIntensityScale else 0f
-                        filter.size = params.grainSize * Parity.GRAIN_SIZE_SCALE
+                        filter.size = params.grainSize
                         filter.softness = params.grainSoftness
                         filter.clumpiness = params.grainClumpiness
                         filter.shadowCoverage = params.grainShadowCoverage
@@ -255,60 +236,68 @@ class EngineContext {
             isExport: Boolean
         ): List<jp.co.cyberagent.android.gpuimage.filter.GPUImageFilter> {
             val filmPipelineFilter = FilmPipelineFilter().apply {
-                temperature = params.colorTemperature
-                tint = params.colorTint + Parity.TINT_OFFSET
-                saturation = params.colorSaturation + Parity.SAT_OFFSET
-                richness = params.colorRichness
-                subtractiveSat = params.colorSubtractiveSat
+                val colorEnabled = params.isColorEnabled
+                temperature = if (colorEnabled) params.colorTemperature else 6000f
+                tint = if (colorEnabled) params.colorTint else 0f
+                saturation = if (colorEnabled) params.colorSaturation else 1f
+                richness = if (colorEnabled) params.colorRichness else 0f
+                subtractiveSat = if (colorEnabled) params.colorSubtractiveSat else 0f
                 
-                dehazeAmount = params.dehazeAmount
-                dehazeNeutralize = params.dehazeAtmosphereNeutralize
+                val atmosEnabled = params.isAtmosphereEnabled
+                dehazeAmount = if (atmosEnabled) params.dehazeAmount else 0f
+                dehazeNeutralize = if (atmosEnabled) params.dehazeAtmosphereNeutralize else 0.5f
                 
-                highlightHue = params.splitToneHighlightHue
-                highlightSat = params.splitToneHighlightSat
-                shadowHue = params.splitToneShadowHue
-                shadowSat = params.splitToneShadowSat
-                balance = params.splitToneBalance
-                impact = params.splitToneImpact
+                val splitEnabled = params.isSplitToningEnabled
+                highlightHue = if (splitEnabled) params.splitToneHighlightHue else 0f
+                highlightSat = if (splitEnabled) params.splitToneHighlightSat else 0f
+                shadowHue = if (splitEnabled) params.splitToneShadowHue else 0f
+                shadowSat = if (splitEnabled) params.splitToneShadowSat else 0f
+                balance = if (splitEnabled) params.splitToneBalance else 0f
+                impact = if (splitEnabled) params.splitToneImpact else 0f
                 
-                exposure = params.toneMapExposure
-                contrast = params.toneMapContrast
-                shoulder = params.toneMapShoulder
-                toe = params.toneMapToe + Parity.TOE_OFFSET
-                highlights = params.toneMapHighlights
-                shadows = params.toneMapShadows
+                val lightEnabled = params.isLightEnabled
+                exposure = if (lightEnabled) params.toneMapExposure else 0f
+                contrast = if (lightEnabled) params.toneMapContrast else 1f
+                shoulder = if (lightEnabled) params.toneMapShoulder else 0f
+                toe = if (lightEnabled) params.toneMapToe else 0f
+                highlights = if (lightEnabled) params.toneMapHighlights else 0f
+                shadows = if (lightEnabled) params.toneMapShadows else 0f
             }
             
             val refHeight = 2000.0f
 
             val glowFilter = GlowFilter().apply {
                 referenceHeight = refHeight
-                halationIntensity = (params.halationIntensity + Parity.GLOW_BASE_BOOST) * Parity.GLOW_INTENSITY_SCALE
-                halationThreshold = params.halationThreshold + Parity.HALATION_THRESHOLD_OFFSET
-                halationSpread = params.halationSpread * Parity.SPREAD_SCALE
+                val halationEnabled = params.isHalationEnabled
+                halationIntensity = if (halationEnabled) params.halationIntensity else 0f
+                halationThreshold = params.halationThreshold
+                halationSpread = params.halationSpread
                 halationHue = params.halationHue
                 halationSaturation = params.halationSaturation
                 showMaskOnly = params.halationShowMask
                 
-                bloomIntensity = (params.bloomIntensity + Parity.GLOW_BASE_BOOST) * Parity.GLOW_INTENSITY_SCALE
-                bloomThreshold = params.bloomThreshold + Parity.HALATION_THRESHOLD_OFFSET
-                bloomSpread = params.bloomSpread * Parity.SPREAD_SCALE
+                val bloomEnabled = params.isBloomEnabled
+                bloomIntensity = if (bloomEnabled) params.bloomIntensity else 0f
+                bloomThreshold = params.bloomThreshold
+                bloomSpread = params.bloomSpread
                 bloomOpacity = params.bloomOpacity
                 glowBlackPoint = params.bloomBlackPoint
                 glowHighlightProtection = params.bloomHighlightProtection
                 blendMode = if (params.bloomSoftLight) 1 else 0
             }
             val filmBlurFilter = FilmBlurFilter().apply {
-                amount = params.blurAmount * Parity.BLUR_SCALE
+                val enabled = params.isAtmosphereEnabled
+                amount = if (enabled) params.blurAmount else 0f
                 isTiltShift = params.blurIsTiltShift
                 focus = params.blurTiltShiftFocus
                 if (viewWidth > 0 && viewHeight > 0) aspectRatio = viewWidth / viewHeight
             }
             val grainFilter = GrainFilter().apply {
                 referenceHeight = refHeight
-                val grainIntensityScale = if (isExport) Parity.GRAIN_EXPORT_SCALE else Parity.GRAIN_PREVIEW_SCALE
-                intensity = params.grainIntensity * grainIntensityScale
-                size = params.grainSize * Parity.GRAIN_SIZE_SCALE
+                val enabled = params.isGrainEnabled
+                val grainIntensityScale = 1.0f
+                intensity = if (enabled) params.grainIntensity * grainIntensityScale else 0f
+                size = params.grainSize
                 softness = params.grainSoftness
                 clumpiness = params.grainClumpiness
                 shadowCoverage = params.grainShadowCoverage
@@ -317,9 +306,13 @@ class EngineContext {
                 chromaIntensity = params.grainChromaIntensity
             }
             val vignetteFilter = VignetteFilter().apply {
-                intensity = params.vignetteIntensity
-                radius = params.vignetteRadius + Parity.VIGNETTE_RADIUS_BOOST
+                val enabled = params.isVignetteEnabled
+                intensity = if (enabled) params.vignetteIntensity else 0f
+                radius = params.vignetteRadius
                 softness = params.vignetteFeather
+                center = PointF(params.vignetteCenterX, params.vignetteCenterY)
+                roundness = params.vignetteRoundness
+                slope = params.vignetteSlope
                 if (viewWidth > 0 && viewHeight > 0) aspectRatio = viewWidth / viewHeight
             }
             val spatialTransformFilter = SpatialTransformFilter().apply {

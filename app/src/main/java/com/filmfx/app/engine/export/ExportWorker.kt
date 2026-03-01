@@ -23,6 +23,47 @@ class ExportWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
 
+    private val notificationId = 888
+    private val channelId = "export_channel"
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        return createForegroundInfo()
+    }
+
+    private fun createForegroundInfo(): ForegroundInfo {
+        val title = "Exporting Image"
+        val cancel = "Cancel"
+        // This PendingIntent can be used to cancel the worker
+        val intent = WorkManager.getInstance(applicationContext)
+            .createCancelPendingIntent(id)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Image Export"
+            val descriptionText = "Notifications for image export status"
+            val importance = android.app.NotificationManager.IMPORTANCE_LOW
+            val channel = android.app.NotificationChannel(channelId, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val notification = androidx.core.app.NotificationCompat.Builder(applicationContext, channelId)
+            .setContentTitle(title)
+            .setTicker(title)
+            .setContentText("Processing filters...")
+            .setSmallIcon(android.R.drawable.ic_menu_save)
+            .setOngoing(true)
+            .addAction(android.R.drawable.ic_delete, cancel, intent)
+            .build()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(notificationId, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(notificationId, notification)
+        }
+    }
+
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val uriStr = inputData.getString(KEY_INPUT_URI) ?: return@withContext Result.failure()
         val paramsJson = inputData.getString(KEY_PARAMS) ?: return@withContext Result.failure()
@@ -85,7 +126,7 @@ class ExportWorker(
                 } ?: throw RuntimeException("Failed to decode input")
                 
                 // Apply filters
-                val filterGroup = EngineContext.buildFilterGroup(params, targetWidth.toFloat(), targetHeight.toFloat())
+                val filterGroup = EngineContext.buildFilterGroup(params, targetWidth.toFloat(), targetHeight.toFloat(), forceExportMode = true)
                 val gpuImage = GPUImage(applicationContext)
                 gpuImage.setFilter(filterGroup)
                 
