@@ -109,14 +109,13 @@ highp vec3 parametricToneMap(highp vec3 x) {
     highp float hWeight = smoothstep(0.5, 1.0, length(x));
     x += x * (highlights * 0.3 * hWeight);
     
-    // 5. Classic Toe (Shadow Lift)
-    highp vec3 shadowMask = clamp(1.0 - (x * 2.0), 0.0, 1.0);
-    x += vec3(toe * 0.025) * shadowMask * shadowMask;
+    // 5. Classic Toe (Shadow Lift) - Refined for smoother control
+    highp vec3 shadowMask = clamp(1.0 - (x * 1.5), 0.0, 1.0);
+    x += vec3(toe * 0.015) * pow(shadowMask, vec3(2.0));
     
-    // 6. Classic Shoulder (Highlight Roll-off)
-    // Now improved to be more aggressive on extreme peaks
-    highp vec3 highlightMask = clamp((x - 0.6) * 2.5, 0.0, 1.0);
-    x -= vec3(shoulder * 0.4) * highlightMask * highlightMask;
+    // 6. Classic Shoulder (Highlight Roll-off) - Refined balance
+    highp vec3 highlightMask = clamp((x - 0.7) * 3.3, 0.0, 1.0);
+    x -= vec3(shoulder * 0.35) * pow(highlightMask, vec3(2.0));
     
     return x;
 }
