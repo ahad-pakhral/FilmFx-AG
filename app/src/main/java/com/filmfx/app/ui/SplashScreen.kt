@@ -14,6 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.filmfx.app.R
+
 @Composable
 fun SplashScreen(
     progress: Float,
@@ -41,17 +45,25 @@ fun SplashScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Premium Logo Text
-            Text(
-                text = "FilmFX",
-                color = Color.White,
-                fontSize = 48.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 8.sp,
-                modifier = Modifier
-                    .graphicsLayer { this.alpha = alpha }
-                    .padding(bottom = 48.dp)
-            )
+            // Premium Logo Image
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_splash_icon),
+                    contentDescription = "FilmFX Logo",
+                    modifier = Modifier
+                        .size(140.dp)
+                        .graphicsLayer { this.alpha = alpha }
+                )
+                
+                Text(
+                    text = "FilmFX",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 4.sp,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 32.dp)
+                )
+            }
 
             Box(
                 modifier = Modifier

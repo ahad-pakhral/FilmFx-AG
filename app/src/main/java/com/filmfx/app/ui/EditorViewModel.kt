@@ -62,6 +62,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     val currentProject: StateFlow<Project?> = _currentProject.asStateFlow()
     private var saveJob: Job? = null
     
+    // Performance Optimization: Prevent redundant GPU work
+    private var lastPreviewedParams: EffectParameters? = null
+    private val gpuImage by lazy { jp.co.cyberagent.android.gpuimage.GPUImage(application) }
+    
     val presets: StateFlow<List<Preset>> = presetRepo.allPresets.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -290,7 +294,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private fun scheduleSave() {
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
-            delay(1000) // Debounce saves
+            delay(1500) // Slightly longer debounce to reduce frequency of heavy operations
             _currentProject.value?.let { proj ->
                 val params = _effectParams.value
                 val updatedProj = proj.copy(
@@ -309,6 +313,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private suspend fun generatePreview(project: Project, params: EffectParameters) {
+        // Optimization: Skip if params are identical to last previewed
+        if (lastPreviewedParams == params) return
+        
         withContext(Dispatchers.IO) {
             try {
                 val context = getApplication<Application>()
@@ -325,34 +332,49 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     BitmapFactory.decodeStream(it, null, options)
                 } ?: return@withContext
 
-                // 2. Apply filters at preview resolution - forceExportMode=true to ignore transforms (no black borders)
+                // 2. Apply filters at preview resolution
                 val filterGroup = com.filmfx.app.engine.EngineContext.buildFilterGroup(
                     params, 
                     sourceBmp.width.toFloat(), 
                     sourceBmp.height.toFloat(),
                     forceExportMode = true
                 )
-                val gpuImage = jp.co.cyberagent.android.gpuimage.GPUImage(context)
-                gpuImage.setFilter(filterGroup)
                 
+                gpuImage.setFilter(filterGroup)
                 val processedBmp = gpuImage.getBitmapWithFilterApplied(sourceBmp)
                 sourceBmp.recycle()
                 
                 if (processedBmp != null) {
-                    // 3. Save to internal storage
+                    // 3. Resize for thumbnail (Max 512px)
+                    val maxThumbDim = 512
+                    val finalBmp = if (processedBmp.width > maxThumbDim || processedBmp.height > maxThumbDim) {
+                        val ratio = processedBmp.width.toFloat() / processedBmp.height.toFloat()
+                        val (newW, newH) = if (ratio > 1f) {
+                            maxThumbDim to (maxThumbDim / ratio).toInt()
+                        } else {
+                            (maxThumbDim * ratio).toInt() to maxThumbDim
+                        }
+                        Bitmap.createScaledBitmap(processedBmp, newW, newH, true)
+                    } else {
+                        processedBmp
+                    }
+                    
+                    if (finalBmp != processedBmp) processedBmp.recycle()
+                    // 4. Save to internal storage
                     val previewFolder = java.io.File(context.filesDir, "previews")
                     if (!previewFolder.exists()) previewFolder.mkdirs()
                     
                     val previewFile = java.io.File(previewFolder, "preview_${project.id}.jpg")
                     java.io.FileOutputStream(previewFile).use { out ->
-                        processedBmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                        finalBmp.compress(Bitmap.CompressFormat.JPEG, 85, out)
                     }
-                    processedBmp.recycle()
+                    finalBmp.recycle()
                     
-                    // 4. Update Database
+                    // 5. Update Database
                     val finalProj = project.copy(previewUri = previewFile.absolutePath)
                     dao.updateProject(finalProj)
                     _currentProject.value = finalProj
+                    lastPreviewedParams = params
                 }
             } catch (e: Exception) {
                 Log.e("FilmFX", "Failed to generate preview", e)

@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.filmfx.app.data.Project
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -69,6 +70,7 @@ fun ProjectsScreen(
     }
 
     var selectedProjects by remember { mutableStateOf(setOf<Long>()) }
+    val isSelectionMode by remember { derivedStateOf { selectedProjects.isNotEmpty() } }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -149,7 +151,7 @@ fun ProjectsScreen(
                         ProjectCard(
                             project = project,
                             isSelected = isSelected,
-                            isSelectionMode = selectedProjects.isNotEmpty(),
+                            isSelectionMode = isSelectionMode,
                             onClick = {
                                 if (selectedProjects.isNotEmpty()) {
                                     selectedProjects = if (isSelected) selectedProjects - project.id else selectedProjects + project.id
@@ -216,24 +218,34 @@ fun ProjectCard(project: Project, isSelected: Boolean, isSelectionMode: Boolean,
         border = if (isSelected) BorderStroke(2.dp, Color.Cyan) else null
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            val context = LocalContext.current
+            val model = remember(project.id, project.previewUri, project.lastModified) {
+                ImageRequest.Builder(context)
+                    .data(project.previewUri ?: project.originalUri)
+                    .crossfade(true)
+                    .size(512)
+                    .memoryCacheKey("proj_${project.id}_${project.lastModified}")
+                    .build()
+            }
             AsyncImage(
-                model = project.previewUri ?: project.originalUri,
+                model = model,
                 contentDescription = "Project Thumbnail",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
 
             // Optional: Gradient overlay for text reading
+            val overlayBrush = remember {
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
+                    startY = 0f,
+                    endY = 500f
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f)),
-                            startY = 0f,
-                            endY = 500f
-                        )
-                    )
+                    .background(brush = overlayBrush)
             )
 
             // Delete Button (Top Right)
@@ -247,19 +259,21 @@ fun ProjectCard(project: Project, isSelected: Boolean, isSelectionMode: Boolean,
             }
 
             // Project Name and Date (Bottom Info)
+            val createdDate = remember(project.createdAt) { com.filmfx.app.utils.DateUtils.formatDate(project.createdAt) }
+            val modifiedDate = remember(project.lastModified) { com.filmfx.app.utils.DateUtils.formatDate(project.lastModified) }
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(12.dp)
             ) {
                 Text(
-                    text = "Created: ${com.filmfx.app.utils.DateUtils.formatDate(project.createdAt)}",
+                    text = "Created: $createdDate",
                     color = Color.Gray,
                     fontSize = 10.sp,
                     maxLines = 1
                 )
                 Text(
-                    text = "Modified: ${com.filmfx.app.utils.DateUtils.formatDate(project.lastModified)}",
+                    text = "Modified: $modifiedDate",
                     color = Color.White,
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
